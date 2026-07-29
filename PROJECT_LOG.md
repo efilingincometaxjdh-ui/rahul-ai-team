@@ -14,13 +14,13 @@ Rules:
 - Repository evidence beats assumptions.
 - Deterministic safety gates beat model opinions.
 - Generated state must use the normalized `utils/json_writer.py` envelope.
-- Missing, malformed, failed, or degraded upstream state must reduce authority, never increase it.
+- Missing, malformed, failed, stale, future-dated, or degraded upstream state must reduce authority, never increase it.
 - No execution/broker integration until intelligence and permission layers are independently tested.
-- Agent 05 fails closed on `NO_TRADE`, invalid input, unknown decision/risk states, invalid confidence, and EXTREME risk.
+- Agent 05 fails closed on `NO_TRADE`, invalid input, unknown decision/risk states, invalid confidence, EXTREME risk, and stale Agent 04 state.
 
 ## Architecture
 
-`Agent 02 technical state` + `Agent 03 macro/news state` → **Agent 04 Decision Engine** → **Agent 05 Permission Engine** → future alert/execution adapter.
+`Agent 02 technical state` + `Agent 03 macro/news state` → **Agent 04 Decision Engine** → **Agent 05 Permission Engine** → future non-executing alert adapter.
 
 Agent 01 remains isolated from this path. Keltner Bot 2.0 is a separate future project.
 
@@ -29,78 +29,89 @@ Agent 01 remains isolated from this path. Keltner Bot 2.0 is a separate future p
 ### Agent 01 — Legacy LLM Macro Analyst
 Status: ISOLATED / LEGACY / ACTIVE CODE.
 
-Audit evidence: Agent 01 v3.0 collects the same Federal Reserve monetary-policy, speech and press-release feeds used by the macro domain, fetches article bodies, sends supplied information to Gemini, produces gold/USD bias, scores, news risk and confidence, then runs its own deterministic `RiskEngine` to produce `bot_action` and records predictions. It requires `GEMINI_API_KEY` at import time and performs network/LLM work at module import.
+Audit evidence: Agent 01 v3.0 overlaps Federal Reserve collection and directional macro analysis with Agent 03, depends on Gemini, and also produces a bot action through its own RiskEngine. That conflicts with the recovered separation of intelligence → decision → permission.
 
-Overlap resolution decision: **do not integrate Agent 01 into Agent 04 V1.** Agent 03 is the deterministic primary macro/news source. Agent 01 duplicates source collection and directional macro analysis and additionally produces a bot action, which conflicts with the recovered separation of intelligence → decision → permission. Preserve Agent 01 as experimental/legacy evidence for a later ML/LLM-assisted intelligence layer. Do not delete it yet.
-
-Future extraction candidates from Agent 01: article-content enrichment, richer USD analysis, invalidation text, prediction/outcome recording. These may be migrated into separate components only after deterministic V1 stabilizes.
+Resolution: **do not integrate Agent 01 into deterministic V1.** Preserve it as experimental evidence for a later LLM/ML-assisted intelligence layer. Future extraction candidates are article-content enrichment, richer USD analysis, invalidation text, and prediction/outcome recording.
 
 ### Agent 02 — XAUUSD Technical Intelligence
 Status: BUILT.
 
-Evidence: fetches M5/M15/H1/H4 XAUUSD candles from Twelve Data and calculates EMA20, EMA50, RSI14, ATR14, ADX14 and market structure. It writes normalized `agent02.json`. Unit tests cover indicators, structure, partial-data degradation, total failure and state I/O.
+Produces normalized M5/M15/H1/H4 technical state with EMA20, EMA50, RSI14, ATR14, ADX14 and market structure.
 
 ### Agent 03 — XAUUSD Macro/News Intelligence
-Status: BUILT v0.1 / PRIMARY MACRO SOURCE FOR V1.
+Status: BUILT v0.2 / PRIMARY MACRO SOURCE FOR V1; latest CI pending.
 
-Evidence: uses official Federal Reserve RSS plus deterministic headline scoring and writes normalized `agent03.json`. It exposes `gold_bias`, `macro_score`, `confidence`, headline count and high-impact count. Current limitation: it does not yet expose an explicit LOW/MEDIUM/HIGH/EXTREME `news_risk` contract; Agent 04 conservatively maps any high-impact headline to HIGH rather than inventing EXTREME semantics.
+Agent 03 now exposes an explicit `news_risk` contract based on observed RSS headlines: LOW when no high-impact headlines are observed, MEDIUM for 1–2, HIGH for 3+. It deliberately **never invents EXTREME from RSS keyword counts**. EXTREME is reserved for a future validated event-calendar source. This prevents headline matching from masquerading as scheduled-event certainty.
 
 ### Agent 04 — Decision Engine
-Status: RECOVERED + INTEGRATED v0.2; latest CI pending.
+Status: RECOVERED + INTEGRATED v0.3; latest CI pending.
 
-Recovery evidence: `decision/engine.py` and commit history establish the Decision Engine role. It combines macro bias/risk with technical trend, EMA, ADX and RSI.
+Technical fusion consumes every complete timeframe with H4=4, H1=3, M15=2, M5=1. Trend is a weighted vote; EMA20, EMA50, RSI and ADX are weighted averages.
 
-Current implementation: `agent04.py` reads normalized Agent 02/03 state. Technical fusion now consumes every complete timeframe rather than selecting one. Weights are H4=4, H1=3, M15=2, M5=1. Trend is a weighted vote; EMA20, EMA50, RSI and ADX are weighted averages. Incomplete timeframes are excluded. If no complete timeframe exists, Agent 04 returns `NO_TRADE`, confidence 0, EXTREME risk and FAILED health. Any degraded upstream state makes Agent 04 DEGRADED.
+Freshness gate added: Agent 02 technical state may be at most 20 minutes old; Agent 03 macro state may be at most 6 hours old. Missing/invalid `generated_at`, unexpectedly future-dated state, or stale state produces `NO_TRADE`, confidence 0, EXTREME risk and FAILED health. Freshness evidence is recorded in Agent 04 metadata.
 
 ### Agent 05 — Permission Engine
-Status: RECOVERED + INTEGRATED; latest CI pending.
+Status: RECOVERED + INTEGRATED v0.2; latest CI pending.
 
-Current policy: final deterministic safety gate. It blocks invalid/non-dict input, unknown decision states, unknown risk states, invalid confidence, `NO_TRADE`, and EXTREME risk. Low confidence produces CAUTION. A DEGRADED Agent 04 state can never become trading authority; the runner converts it to CAUTION/human review.
+Final deterministic safety gate. Agent 04 decision state may be at most 15 minutes old. Missing/malformed/failed/unknown-health/stale/future-dated decision state produces `BLOCK_TRADING` and FAILED health. Valid but degraded Agent 04 state produces CAUTION and no trading authority. Unknown decision/risk states, invalid confidence, `NO_TRADE`, and EXTREME risk also fail closed.
 
 ## CI / test evidence
 
-- Repository workflow `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on pushes and pull requests using Python 3.11.
-- PR #5 original recovery HEAD `bdb0e7e` completed Tests run #43 successfully; the test job and unit-test step both concluded SUCCESS.
-- After that green baseline, the loop changed Agent 04 to multi-timeframe fusion and strengthened Agent 05 unknown-state fail-closed behavior, with corresponding deterministic tests.
-- **Latest branch HEAD must receive a fresh successful CI run before PR #5 can leave draft or merge.** No test failure may be bypassed.
+- `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on pushes and pull requests using Python 3.11.
+- Original recovery HEAD `bdb0e7e`: Tests run #43 SUCCESS.
+- Multi-timeframe/fail-closed HEAD `1f988e98`: Tests run #53 SUCCESS, including the unit-test step.
+- The current loop then added freshness enforcement, Agent 03 explicit risk semantics, and synthetic pipeline contract tests. **These newest commits require a fresh green CI run before PR #5 can leave draft or merge.**
 
 ## Contract snapshot
 
 Agent 02 → Agent 04:
-- envelope status must be SUCCESS or DEGRADED;
+- status SUCCESS or DEGRADED;
+- valid normalized `generated_at` no older than 20 minutes;
 - `data` may contain M5/M15/H1/H4;
-- a usable timeframe requires non-null `ema20`, `ema50`, `rsi`, `adx`, `trend`.
+- usable timeframe requires non-null `ema20`, `ema50`, `rsi`, `adx`, `trend`.
 
 Agent 03 → Agent 04:
-- envelope status must be SUCCESS or DEGRADED;
-- required directional input: `data.gold_bias`;
-- `data.high_impact_count > 0` currently maps to HIGH news risk; otherwise LOW.
+- status SUCCESS or DEGRADED;
+- valid normalized `generated_at` no older than 6 hours;
+- required `data.gold_bias` and `data.news_risk`;
+- RSS risk values are LOW/MEDIUM/HIGH only; EXTREME requires future validated event-calendar evidence.
 
 Agent 04 → Agent 05:
-- normalized envelope with `data.decision`, `data.confidence`, `data.risk`, `data.reasons`;
-- FAILED upstream means no authority;
-- DEGRADED upstream means CAUTION at Agent 05.
+- normalized envelope with `generated_at`, `data.decision`, `data.confidence`, `data.risk`, `data.reasons`;
+- decision state no older than 15 minutes;
+- FAILED/stale/invalid upstream means BLOCK_TRADING;
+- DEGRADED upstream means CAUTION.
 
 Agent 05 downstream contract:
-- `ALLOW_BUYS`, `ALLOW_SELLS`, `ALLOW_BOTH` are possible only from valid, non-degraded known state with sufficient confidence;
+- `ALLOW_BUYS`, `ALLOW_SELLS`, `ALLOW_BOTH` require valid, fresh, non-degraded known state with sufficient confidence;
 - `CAUTION` carries no autonomous trading authority;
-- `BLOCK_TRADING` is the fail-closed state.
+- `BLOCK_TRADING` is fail-closed.
+
+## Deterministic test coverage added this loop
+
+- stale Agent 02 → Agent 04 NO_TRADE/FAILED;
+- stale Agent 03 → Agent 04 NO_TRADE/FAILED;
+- stale Agent 04 → Agent 05 BLOCK_TRADING/FAILED;
+- fresh bullish synthetic pipeline → ALLOW_BUYS;
+- degraded synthetic pipeline → CAUTION, never authority;
+- Agent 03 LOW/MEDIUM/HIGH risk classification;
+- Agent 03 RSS classifier cannot emit EXTREME.
 
 ## Current risks / technical debt
 
-1. Latest Agent 04/05 changes still require fresh CI evidence.
-2. Agent 03 lacks explicit event-risk severity; high-impact detection is not equivalent to an EXTREME event calendar.
-3. State freshness/maximum age is not yet enforced by Agent 04/05. A structurally valid but stale state could currently be consumed.
-4. Agent 01 remains monolithic, credential-dependent and performs side effects at import; keep isolated.
-5. README is behind the recovered architecture.
-6. No broker/execution adapter exists by design; do not add autonomous execution yet.
+1. Newest freshness/risk/contract changes require fresh CI evidence.
+2. Agent 03 cannot know scheduled EXTREME event windows without a validated event-calendar source; do not fake this from RSS.
+3. Freshness thresholds are deterministic V1 policy and should later be validated against actual workflow cadence and market-session behavior.
+4. Agent 01 remains monolithic and credential-dependent; keep isolated.
+5. README is behind the architecture.
+6. No broker/execution adapter exists by design; do not add autonomous execution.
 
 ## Active loop / next actions
 
-1. Observe latest PR #5 CI and fix any failure; keep draft until clean.
-2. Add deterministic state freshness validation so stale Agent 02/03/04 states fail closed.
-3. Add/validate explicit Agent 03 news-risk semantics without conflating a keyword hit with an EXTREME event.
-4. Run end-to-end contract tests for Agent02 + Agent03 → Agent04 → Agent05 using synthetic normalized states.
-5. Update README after contracts stabilize.
-6. Design a **non-executing downstream alert interface** first: consume Agent 05 state, expose permission/reason/health/freshness, and never place trades.
-7. Only after deterministic V1 stability: automation → historical state/outcome collection → architecture hardening → validated integrations → ML-assisted intelligence/feedback → V2.
+1. Observe current PR #5 CI; diagnose/fix/retest any failure.
+2. When green, update README to the stable deterministic V1 contracts.
+3. Add a read-only/non-executing Agent 06 Alert Gateway that consumes Agent 05 and exposes permission, reason, health and freshness only.
+4. Add deterministic Agent 06 tests, including stale/malformed permission-state handling.
+5. Re-run CI and update this log.
+6. Keep PR #5 draft until the complete recovered V1 scope is green and reviewed for architecture drift.
+7. After deterministic V1: automation → historical state/outcome collection → architecture hardening → validated integrations → ML-assisted intelligence/feedback → V2.
