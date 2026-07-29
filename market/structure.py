@@ -3,11 +3,32 @@
 # MARKET STRUCTURE ANALYZER
 # ============================================================
 
-def analyze_structure(candles):
-    """
-    Basic market structure analysis.
-    """
+from market.indicators import ema
 
+
+def _latest_swing(candles, field, mode, lookback=2):
+    """Return the latest confirmed local swing, or a recent-window fallback."""
+    if len(candles) < (lookback * 2) + 1:
+        raise ValueError("Not enough candles for swing analysis.")
+
+    for i in range(len(candles) - lookback - 1, lookback - 1, -1):
+        value = candles[i][field]
+        neighbours = [
+            candles[j][field]
+            for j in range(i - lookback, i + lookback + 1)
+            if j != i
+        ]
+        if mode == "high" and value > max(neighbours):
+            return value
+        if mode == "low" and value < min(neighbours):
+            return value
+
+    recent = [c[field] for c in candles[-20:]]
+    return max(recent) if mode == "high" else min(recent)
+
+
+def analyze_structure(candles):
+    """Analyze trend, support/resistance and confirmed local swings."""
     if len(candles) < 20:
         raise ValueError("Not enough candles for structure analysis.")
 
@@ -15,8 +36,7 @@ def analyze_structure(candles):
     highs = [c["high"] for c in candles]
     lows = [c["low"] for c in candles]
 
-    ema20 = sum(closes[-20:]) / 20
-
+    ema20 = ema(closes, 20)
     latest_close = closes[-1]
 
     if latest_close > ema20:
@@ -26,16 +46,10 @@ def analyze_structure(candles):
     else:
         trend = "Sideways"
 
-    support = min(lows[-20:])
-    resistance = max(highs[-20:])
-
-    swing_high = highs[-2]
-    swing_low = lows[-2]
-
     return {
         "trend": trend,
-        "support": support,
-        "resistance": resistance,
-        "swing_high": swing_high,
-        "swing_low": swing_low,
+        "support": min(lows[-20:]),
+        "resistance": max(highs[-20:]),
+        "swing_high": _latest_swing(candles, "high", "high"),
+        "swing_low": _latest_swing(candles, "low", "low"),
     }
