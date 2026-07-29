@@ -2,10 +2,17 @@ name: Agent 02 - XAUUSD Market Intelligence
 
 on:
   workflow_dispatch:
+  schedule:
+    # Weekdays every 4 hours. Keeps API/GitHub usage modest while producing fresh state.
+    - cron: "17 */4 * * 1-5"
+
+permissions:
+  contents: read
 
 jobs:
   run-agent02:
     runs-on: ubuntu-latest
+    timeout-minutes: 5
 
     steps:
       - name: Checkout repository
@@ -20,3 +27,12 @@ jobs:
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python agent02.py
+
+      - name: Upload current market state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent02-state
+          path: data/current/agent02.json
+          if-no-files-found: warn
+          retention-days: 7
