@@ -82,9 +82,17 @@ class PermissionEngineTests(unittest.TestCase):
     def test_invalid_input_blocks(self):
         self.assertEqual(PermissionEngine().evaluate(None)["permission"], "BLOCK_TRADING")
 
-    def test_unknown_state_never_grants_authority(self):
+    def test_unknown_state_blocks(self):
         result = PermissionEngine().evaluate({"decision": "UNKNOWN", "confidence": 90, "risk": "LOW"})
-        self.assertEqual(result["permission"], "CAUTION")
+        self.assertEqual(result["permission"], "BLOCK_TRADING")
+
+    def test_unknown_risk_blocks(self):
+        result = PermissionEngine().evaluate({"decision": "BULLISH", "confidence": 90, "risk": "UNKNOWN"})
+        self.assertEqual(result["permission"], "BLOCK_TRADING")
+
+    def test_invalid_confidence_blocks(self):
+        result = PermissionEngine().evaluate({"decision": "BULLISH", "confidence": 101, "risk": "LOW"})
+        self.assertEqual(result["permission"], "BLOCK_TRADING")
 
     def test_low_confidence_is_caution(self):
         result = PermissionEngine().evaluate({"decision": "BULLISH", "confidence": 40, "risk": "LOW"})
