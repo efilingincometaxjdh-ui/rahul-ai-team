@@ -6,6 +6,11 @@
 
 
 class PermissionEngine:
+    VALID_RISKS = {"LOW", "MEDIUM", "HIGH", "EXTREME"}
+    VALID_STATES = {
+        "STRONG_BULLISH", "BULLISH", "NEUTRAL", "BEARISH", "STRONG_BEARISH", "NO_TRADE"
+    }
+
     def __init__(self, minimum_confidence=55):
         self.minimum_confidence = minimum_confidence
 
@@ -21,12 +26,16 @@ class PermissionEngine:
         except (TypeError, ValueError):
             confidence = 0
 
+        if state not in self.VALID_STATES:
+            return {"permission": "BLOCK_TRADING", "reason": "Unknown decision state."}
+        if risk not in self.VALID_RISKS:
+            return {"permission": "BLOCK_TRADING", "reason": "Unknown risk state."}
         if state == "NO_TRADE":
             return {"permission": "BLOCK_TRADING", "reason": "Decision engine blocked trading."}
-
         if risk == "EXTREME":
             return {"permission": "BLOCK_TRADING", "reason": "Extreme news risk."}
-
+        if not 0 <= confidence <= 100:
+            return {"permission": "BLOCK_TRADING", "reason": "Invalid decision confidence."}
         if confidence < self.minimum_confidence:
             return {
                 "permission": "CAUTION",
@@ -40,5 +49,5 @@ class PermissionEngine:
             "BEARISH": ("ALLOW_SELLS", "Bearish environment."),
             "STRONG_BEARISH": ("ALLOW_SELLS", "Strong bearish environment."),
         }
-        permission, reason = mapping.get(state, ("CAUTION", "Unknown market state."))
+        permission, reason = mapping[state]
         return {"permission": permission, "reason": reason}
