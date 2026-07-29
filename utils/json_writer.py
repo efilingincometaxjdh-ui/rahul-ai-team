@@ -3,8 +3,11 @@ import os
 from datetime import datetime, timezone
 
 
-def write_state(agent, version, filename, data, status="SUCCESS", errors=None, metadata=None):
-    """Write an agent state file with explicit health information."""
+STATE_DIR = os.path.join("data", "current")
+
+
+def write_state(agent, version, filename, data, status="SUCCESS", errors=None, metadata=None, state_dir=None):
+    """Write an agent state file atomically with explicit health information."""
     state = {
         "agent": agent,
         "version": version,
@@ -18,9 +21,10 @@ def write_state(agent, version, filename, data, status="SUCCESS", errors=None, m
     if metadata:
         state["metadata"] = metadata
 
-    os.makedirs("data/current", exist_ok=True)
+    target_dir = state_dir or STATE_DIR
+    os.makedirs(target_dir, exist_ok=True)
 
-    path = os.path.join("data", "current", filename)
+    path = os.path.join(target_dir, filename)
     temp_path = path + ".tmp"
 
     with open(temp_path, "w", encoding="utf-8") as file:
