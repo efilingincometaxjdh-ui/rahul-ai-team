@@ -1,0 +1,29 @@
+name: Agent 03 - XAUUSD Macro News Intelligence
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "37 */4 * * 1-5"
+
+permissions:
+  contents: read
+
+jobs:
+  run-agent03:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Run Agent 03
+        run: python agent03.py
+      - name: Upload Agent 03 state
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent03-state
+          path: data/current/agent03.json
+          if-no-files-found: warn
+          retention-days: 7
