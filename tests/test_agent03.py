@@ -1,6 +1,6 @@
 import unittest
 
-from agent03 import build_macro_state
+from agent03 import build_macro_state, classify_news_risk
 from macro.scoring import score_headline, aggregate_headlines
 
 
@@ -24,6 +24,20 @@ class MacroScoringTests(unittest.TestCase):
         self.assertGreater(result["confidence"], 50)
 
 
+class NewsRiskTests(unittest.TestCase):
+    def test_no_high_impact_is_low(self):
+        self.assertEqual(classify_news_risk([{"impact": "NORMAL"}]), "LOW")
+
+    def test_one_high_impact_is_medium(self):
+        self.assertEqual(classify_news_risk([{"impact": "HIGH"}]), "MEDIUM")
+
+    def test_multiple_high_impact_is_high(self):
+        self.assertEqual(classify_news_risk([{"impact": "HIGH"}] * 3), "HIGH")
+
+    def test_rss_scoring_never_invents_extreme(self):
+        self.assertNotEqual(classify_news_risk([{"impact": "HIGH"}] * 20), "EXTREME")
+
+
 class Agent03HealthTests(unittest.TestCase):
     def test_no_headlines_fails(self):
         data, status, errors = build_macro_state([])
@@ -35,6 +49,7 @@ class Agent03HealthTests(unittest.TestCase):
         data, status, errors = build_macro_state([{"title": "Fed policy update"}], ["one feed failed"])
         self.assertEqual(status, "DEGRADED")
         self.assertEqual(data["headline_count"], 1)
+        self.assertEqual(data["news_risk"], "MEDIUM")
         self.assertTrue(errors)
 
 
