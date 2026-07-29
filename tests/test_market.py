@@ -2,7 +2,6 @@ import json
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
 
 from agent02 import build_market_state
 from market.indicators import ema, calculate_indicators
@@ -55,12 +54,7 @@ class StructureTests(unittest.TestCase):
 
 class AgentHealthTests(unittest.TestCase):
     def test_partial_data_is_degraded(self):
-        market_data = {
-            "M5": make_candles(),
-            "M15": make_candles(),
-            "H1": None,
-            "H4": make_candles(),
-        }
+        market_data = {"M5": make_candles(), "M15": make_candles(), "H1": None, "H4": make_candles()}
         state, status, errors, metadata = build_market_state(market_data)
         self.assertEqual(status, "DEGRADED")
         self.assertNotIn("H1", state)
@@ -77,18 +71,25 @@ class AgentHealthTests(unittest.TestCase):
 class StateIOTests(unittest.TestCase):
     def test_write_and_read_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("utils.json_writer.os.path.join", side_effect=lambda *parts: os.path.join(temp_dir, parts[-1])):
-                written = write_state("TestAgent", "1.0", "state.json", {"ok": True}, status="DEGRADED", errors=["sample"])
-                path = os.path.join(temp_dir, "state.json")
-                with open(path, "r", encoding="utf-8") as file:
-                    stored = json.load(file)
-                self.assertEqual(stored["status"], "DEGRADED")
-                self.assertEqual(written["errors"], ["sample"])
+            written = write_state(
+                "TestAgent", "1.0", "state.json", {"ok": True},
+                status="DEGRADED", errors=["sample"], state_dir=temp_dir,
+            )
+            path = os.path.join(temp_dir, "state.json")
+            with open(path, "r", encoding="utf-8") as file:
+                stored = json.load(file)
+            self.assertEqual(stored["status"], "DEGRADED")
+            self.assertEqual(written["errors"], ["sample"])
+            self.assertEqual(read_state("state.json", state_dir=temp_dir)["data"], {"ok": True})
 
     def test_reader_missing_optional_state(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            with patch("utils.json_reader.os.path.join", side_effect=lambda *parts: os.path.join(temp_dir, parts[-1])):
-                self.assertIsNone(read_state("missing.json"))
+            self.assertIsNone(read_state("missing.json", state_dir=temp_dir))
+
+    def test_reader_missing_required_state_raises(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            with self.assertRaises(FileNotFoundError):
+                read_state("missing.json", required=True, state_dir=temp_dir)
 
 
 if __name__ == "__main__":
