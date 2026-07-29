@@ -3,9 +3,12 @@
 from decision.engine import DecisionEngine
 from utils.json_reader import read_state
 from utils.json_writer import write_state
+from utils.state_validation import validate_state_freshness
 
 TIMEFRAME_WEIGHTS = {"H4": 4, "H1": 3, "M15": 2, "M5": 1}
 REQUIRED_TECHNICAL_FIELDS = ("ema20", "ema50", "rsi", "adx", "trend")
+AGENT02_MAX_AGE_SECONDS = 20 * 60
+AGENT03_MAX_AGE_SECONDS = 6 * 60 * 60
 
 
 def _valid_technical(technical):
@@ -69,18 +72,26 @@ def normalize_macro(agent03_state):
     data = agent03_state.get("data", {}) if isinstance(agent03_state, dict) else {}
     return {
         "gold_bias": data.get("gold_bias", "NEUTRAL"),
-        # Agent 03 v0.1 exposes impact counts rather than an explicit risk enum.
-        # HIGH is conservative without inventing EXTREME event semantics.
-        "news_risk": "HIGH" if data.get("high_impact_count", 0) else "LOW",
+        "news_risk": data.get("news_risk", "HIGH"),
     }
 
 
-def build_decision(agent02_state, agent03_state):
+def build_decision(agent02_state, agent03_state, now=None):
     errors = []
-    if not isinstance(agent02_state, dict) or agent02_state.get("status") not in {"SUCCESS", "DEGRADED"}:
-        errors.append("Agent02 state unavailable, malformed, or failed")
-    if not isinstance(agent03_state, dict) or agent03_state.get("status") not in {"SUCCESS", "DEGRADED"}:
-        errors.append("Agent03 state unavailable, malformed, or failed")
+    freshness = {}
+    inputs = (
+        ("Agent02", agent02_state, AGENT02_MAX_AGE_SECONDS),
+        ("Agent03", agent03_state, AGENT03_MAX_AGE_SECONDS),
+    )
+    for name, state, max_age in inputs:
+        if not isinstance(state, dict) or state.get("status") not in {"SUCCESS", "DEGRADED"}:
+            errors.append(f"{name} state unavailable, malformed, or failed")
+            freshness[name] = {"fresh": False, "reason": "invalid health envelope"}
+            continue
+        fresh, reason, age = validate_state_freshness(state, max_age, now=now)
+        freshness[name] = {"fresh": fresh, "reason": reason, "age_seconds": age, "max_age_seconds": max_age}
+        if not fresh:
+            errors.append(f"{name} state rejected: {reason}")
 
     technical, fusion_metadata = fuse_technical_state(agent02_state or {})
     if technical is None:
@@ -92,7 +103,7 @@ def build_decision(agent02_state, agent03_state):
             "confidence": 0,
             "risk": "EXTREME",
             "reasons": errors,
-        }, "FAILED", errors, {"technical_fusion": fusion_metadata}
+        }, "FAILED", errors, {"technical_fusion": fusion_metadata, "freshness": freshness}
 
     macro = normalize_macro(agent03_state)
     result = DecisionEngine().evaluate(macro, technical)
@@ -106,6 +117,7 @@ def build_decision(agent02_state, agent03_state):
 
     metadata = {
         "technical_fusion": fusion_metadata,
+        "freshness": freshness,
         "inputs": ["agent02.json", "agent03.json"],
     }
     return result, status, errors, metadata
@@ -117,7 +129,7 @@ def main():
     data, status, errors, metadata = build_decision(agent02_state, agent03_state)
     write_state(
         agent="Agent04",
-        version="0.2",
+        version="0.3",
         filename="decision.json",
         data=data,
         status=status,
