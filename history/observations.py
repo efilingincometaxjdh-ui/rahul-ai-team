@@ -8,6 +8,10 @@ from pathlib import Path
 
 
 HORIZONS = ("15m", "1h", "4h")
+KNOWN_DECISIONS = {"BUY", "SELL", "NO_TRADE"}
+KNOWN_PERMISSIONS = {"ALLOW_BUYS", "ALLOW_SELLS", "ALLOW_BOTH", "CAUTION", "BLOCK_TRADING"}
+KNOWN_RISKS = {"LOW", "MEDIUM", "HIGH", "EXTREME"}
+KNOWN_CONFLICTS = {"LOW", "MEDIUM", "HIGH"}
 
 
 def _canonical(value):
@@ -45,23 +49,61 @@ def _read_jsonl(path):
     return records
 
 
-def build_observation(trader_view, observed_at=None):
-    """Create an immutable prediction snapshot with separately appendable outcomes."""
+def _validate_trader_view(trader_view):
+    """Require a safe, read-only Trader View before it can become historical evidence."""
     if not isinstance(trader_view, dict):
         raise ValueError("trader_view must be a dictionary")
+    if trader_view.get("symbol") != "XAUUSD":
+        raise ValueError("trader_view symbol must be XAUUSD")
+    if trader_view.get("mode") != "READ_ONLY":
+        raise ValueError("trader_view mode must be READ_ONLY")
+    if trader_view.get("execution_enabled") is not False:
+        raise ValueError("trader_view must not enable execution")
+    if trader_view.get("decision") not in KNOWN_DECISIONS:
+        raise ValueError("unknown trader_view decision")
+    if trader_view.get("permission") not in KNOWN_PERMISSIONS:
+        raise ValueError("unknown trader_view permission")
+    if trader_view.get("risk") not in KNOWN_RISKS:
+        raise ValueError("unknown trader_view risk")
+    if trader_view.get("timeframe_conflict") not in KNOWN_CONFLICTS:
+        raise ValueError("unknown trader_view timeframe_conflict")
+    confidence = trader_view.get("confidence")
+    if isinstance(confidence, bool) or not isinstance(confidence, (int, float)) or not math.isfinite(confidence) or not 0 <= confidence <= 100:
+        raise ValueError("trader_view confidence must be between 0 and 100")
+    fresh = trader_view.get("fresh")
+    if not isinstance(fresh, bool):
+        raise ValueError("trader_view fresh must be boolean")
+
+    permission = trader_view["permission"]
+    decision = trader_view["decision"]
+    if decision == "NO_TRADE" and permission.startswith("ALLOW_"):
+        raise ValueError("NO_TRADE cannot carry ALLOW permission")
+    if permission == "ALLOW_BUYS" and decision != "BUY":
+        raise ValueError("ALLOW_BUYS requires BUY decision")
+    if permission == "ALLOW_SELLS" and decision != "SELL":
+        raise ValueError("ALLOW_SELLS requires SELL decision")
+    if not fresh and permission.startswith("ALLOW_"):
+        raise ValueError("stale Trader View cannot carry ALLOW permission")
+
+
+def build_observation(trader_view, observed_at=None):
+    """Create an immutable prediction snapshot from the read-only Trader View only."""
+    _validate_trader_view(trader_view)
     observed_at = _timestamp(observed_at or datetime.now(timezone.utc).isoformat(), "observed_at")
     prediction = {
-        "symbol": trader_view.get("symbol", "XAUUSD"),
-        "decision": trader_view.get("decision", "NO_TRADE"),
-        "permission": trader_view.get("permission", "BLOCK_TRADING"),
-        "confidence": trader_view.get("confidence", 0),
-        "risk": trader_view.get("risk", "EXTREME"),
+        "symbol": trader_view["symbol"],
+        "decision": trader_view["decision"],
+        "permission": trader_view["permission"],
+        "confidence": trader_view["confidence"],
+        "risk": trader_view["risk"],
         "macro_bias": trader_view.get("macro_bias", "NEUTRAL"),
         "news_risk": trader_view.get("news_risk", "HIGH"),
-        "timeframe_conflict": trader_view.get("timeframe_conflict", "HIGH"),
+        "timeframe_conflict": trader_view["timeframe_conflict"],
         "trend_votes": trader_view.get("trend_votes", {}),
-        "fresh": bool(trader_view.get("fresh", False)),
+        "fresh": trader_view["fresh"],
         "execution_enabled": False,
+        "source": "TraderView",
+        "mode": "READ_ONLY",
     }
     fingerprint = hashlib.sha256(_canonical({"observed_at": observed_at, "prediction": prediction}).encode()).hexdigest()[:20]
     return {
