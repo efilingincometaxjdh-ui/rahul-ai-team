@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
-Last audited: 2026-07-30
-Branch: `main`
+Last audited: 2026-07-31
+Branch: `phase2-trader-observation-contract`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -68,7 +68,8 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Freshness/risk/end-to-end HEAD `06d79b5d`: Tests #67 SUCCESS.
 - Deterministic V1 effective HEAD `8501a1d0`: Tests #75 SUCCESS; PR #5 merged.
 - Phase 2 historical observation HEAD `27f54dca`: Tests #86 SUCCESS; PR #6 merged.
-- Outcome-integrity HEAD `7289267b`: Tests #93 SUCCESS; PR #7 mergeable with no review comments and merged after evidence review.
+- Outcome-integrity HEAD `7289267b`: Tests #93 SUCCESS; PR #7 merged after evidence review.
+- Trader View observation-boundary branch: implementation/tests added; fresh CI required before integration.
 
 ## Contract snapshot
 
@@ -94,20 +95,20 @@ Agent 05 → Agent 06:
 - invalid/stale/unknown fails to BLOCK_TRADING;
 - degraded authority cannot pass through as ALLOW_*.
 
-Agent 06 downstream:
-- informational alert only;
-- always `execution_enabled: false`;
-- no autonomous execution capability.
+Agent 06 → Trader View → historical evidence:
+- Agent 06 remains the permission authority and is informational/read-only;
+- Trader View must explicitly identify `mode: READ_ONLY`, `symbol: XAUUSD`, and `execution_enabled: false` before becoming a prediction snapshot;
+- historical observation rejects unknown decisions/permissions/risks/conflict states, invalid confidence/freshness, execution authority, stale ALLOW states, and decision/permission mismatches;
+- blocked/NO_TRADE snapshots remain valid evidence when they are safely blocked, so later analytics can measure avoided setups without increasing authority.
 
-## Phase 2 historical evidence — MERGED
+## Phase 2 historical evidence — ACTIVE
 
 PR #6 introduced the first append-only observation/outcome contract:
 - immutable prediction snapshots with deterministic observation IDs;
 - append-only JSONL storage with duplicate-ID idempotency;
 - outcomes are separate events and never mutate the prediction snapshot;
 - supported horizons are explicitly `15m`, `1h`, `4h`;
-- invalid horizons and non-positive prices fail validation;
-- historical snapshots forcibly store `execution_enabled: false`, even if unsafe caller input claims otherwise.
+- invalid horizons and non-positive prices fail validation.
 
 PR #7 hardened outcome integrity:
 - append-only outcome writer without rewriting prediction history;
@@ -116,6 +117,8 @@ PR #7 hardened outcome integrity:
 - timezone-aware ISO-8601 timestamp and schema validation;
 - rejection of NaN/infinite/non-positive prices;
 - fail-closed behavior when existing JSONL is corrupt or structurally invalid.
+
+Current branch hardens the input boundary so historical predictions can only be constructed from a valid read-only Trader View contract. Unsafe execution-bearing input is rejected rather than silently sanitized.
 
 This layer still does **not** choose a live market-price provider, run continuous collection, calculate performance statistics, or create trading authority.
 
@@ -131,7 +134,7 @@ This layer still does **not** choose a live market-price provider, run continuou
 
 ## Active Phase 2 loop
 
-1. Validate Trader View/Alert output as the sole prediction snapshot input and preserve fail-closed/read-only semantics.
+1. Obtain clean CI evidence for Trader View → historical prediction boundary and integrate only if green.
 2. Enforce outcome timing integrity against the source observation before operational collection.
 3. Improve Agent 04 explicit multi-timeframe alignment/conflict intelligence without weakening Agent 05 safety authority.
 4. Add safe observation workflow orchestration only after contracts are green.
