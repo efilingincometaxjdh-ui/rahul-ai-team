@@ -125,6 +125,48 @@ class HistoricalObservationTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 append_outcome(outcomes, known, observations)
 
+    def test_outcome_writer_requires_source_history(self):
+        outcome = build_outcome("known", "15m", 4100, "2026-07-30T12:15:00+00:00")
+        with tempfile.TemporaryDirectory() as directory:
+            with self.assertRaises(ValueError):
+                append_outcome(Path(directory) / "outcomes.jsonl", outcome)
+
+    def test_outcome_writer_rejects_measurement_before_requested_horizon(self):
+        observation = build_observation(self.view, "2026-07-30T12:00:00+00:00")
+        cases = [
+            ("15m", "2026-07-30T12:14:59+00:00"),
+            ("1h", "2026-07-30T12:59:59+00:00"),
+            ("4h", "2026-07-30T15:59:59+00:00"),
+        ]
+        with tempfile.TemporaryDirectory() as directory:
+            observations = Path(directory) / "observations.jsonl"
+            outcomes = Path(directory) / "outcomes.jsonl"
+            append_observation(observations, observation)
+            for horizon, measured_at in cases:
+                with self.subTest(horizon=horizon):
+                    outcome = build_outcome(observation["observation_id"], horizon, 4100, measured_at)
+                    with self.assertRaises(ValueError):
+                        append_outcome(outcomes, outcome, observations)
+
+    def test_outcome_writer_accepts_exact_or_later_horizon_across_timezones(self):
+        observation = build_observation(self.view, "2026-07-30T17:30:00+05:30")
+        with tempfile.TemporaryDirectory() as directory:
+            observations = Path(directory) / "observations.jsonl"
+            outcomes = Path(directory) / "outcomes.jsonl"
+            append_observation(observations, observation)
+            exact = build_outcome(observation["observation_id"], "1h", 4100, "2026-07-30T13:00:00+00:00")
+            self.assertTrue(append_outcome(outcomes, exact, observations))
+
+    def test_outcome_writer_rejects_invalid_or_duplicate_source_observation(self):
+        observation = build_observation(self.view, "2026-07-30T12:00:00+00:00")
+        outcome = build_outcome(observation["observation_id"], "15m", 4100, "2026-07-30T12:15:00+00:00")
+        with tempfile.TemporaryDirectory() as directory:
+            observations = Path(directory) / "observations.jsonl"
+            outcomes = Path(directory) / "outcomes.jsonl"
+            observations.write_text(json.dumps(observation) + "\n" + json.dumps(observation) + "\n", encoding="utf-8")
+            with self.assertRaises(ValueError):
+                append_outcome(outcomes, outcome, observations)
+
 
 if __name__ == "__main__":
     unittest.main()
