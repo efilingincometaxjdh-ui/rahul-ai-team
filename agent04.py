@@ -17,6 +17,36 @@ def _valid_technical(technical):
     )
 
 
+def _alignment_metadata(usable):
+    """Describe MTF agreement without changing deterministic decision authority."""
+    trends = {tf: str(value["trend"]).lower() for tf, value in usable.items()}
+    directional = {tf: trend for tf, trend in trends.items() if trend in {"bullish", "bearish"}}
+    unique = set(directional.values())
+
+    if not directional:
+        state = "NEUTRAL"
+    elif len(unique) == 1:
+        state = "ALIGNED"
+    else:
+        state = "CONFLICT"
+
+    higher = {tf: directional[tf] for tf in ("H4", "H1") if tf in directional}
+    lower = {tf: directional[tf] for tf in ("M15", "M5") if tf in directional}
+    higher_conflict = len(set(higher.values())) > 1
+    lower_conflict = len(set(lower.values())) > 1
+    cross_group_conflict = bool(higher and lower and set(higher.values()) != set(lower.values()))
+
+    return {
+        "state": state,
+        "timeframe_trends": trends,
+        "higher_timeframes": higher,
+        "lower_timeframes": lower,
+        "higher_timeframe_conflict": higher_conflict,
+        "lower_timeframe_conflict": lower_conflict,
+        "cross_group_conflict": cross_group_conflict,
+    }
+
+
 def fuse_technical_state(agent02_state):
     """Fuse every usable Agent 02 timeframe, weighted toward higher timeframes."""
     data = agent02_state.get("data", {}) if isinstance(agent02_state, dict) else {}
@@ -26,7 +56,7 @@ def fuse_technical_state(agent02_state):
         if _valid_technical(data.get(timeframe))
     }
     if not usable:
-        return None, {"usable_timeframes": [], "trend_votes": {}}
+        return None, {"usable_timeframes": [], "trend_votes": {}, "alignment": _alignment_metadata({})}
 
     total_weight = sum(TIMEFRAME_WEIGHTS[timeframe] for timeframe in usable)
     bullish_weight = sum(
@@ -64,6 +94,7 @@ def fuse_technical_state(agent02_state):
         "usable_timeframes": list(usable.keys()),
         "timeframe_weights": {tf: TIMEFRAME_WEIGHTS[tf] for tf in usable},
         "trend_votes": {"bullish": bullish_weight, "bearish": bearish_weight},
+        "alignment": _alignment_metadata(usable),
     }
     return technical, metadata
 
@@ -129,7 +160,7 @@ def main():
     data, status, errors, metadata = build_decision(agent02_state, agent03_state)
     write_state(
         agent="Agent04",
-        version="0.3",
+        version="0.4",
         filename="decision.json",
         data=data,
         status=status,
