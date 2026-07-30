@@ -3,11 +3,12 @@
 import hashlib
 import json
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 
 HORIZONS = ("15m", "1h", "4h")
+HORIZON_DELTAS = {"15m": timedelta(minutes=15), "1h": timedelta(hours=1), "4h": timedelta(hours=4)}
 KNOWN_DECISIONS = {"BUY", "SELL", "NO_TRADE"}
 KNOWN_PERMISSIONS = {"ALLOW_BUYS", "ALLOW_SELLS", "ALLOW_BOTH", "CAUTION", "BLOCK_TRADING"}
 KNOWN_RISKS = {"LOW", "MEDIUM", "HIGH", "EXTREME"}
@@ -18,7 +19,7 @@ def _canonical(value):
     return json.dumps(value, sort_keys=True, separators=(",", ":"), ensure_ascii=True)
 
 
-def _timestamp(value, field):
+def _parse_timestamp(value, field):
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"{field} must be an ISO-8601 timestamp")
     try:
@@ -27,6 +28,11 @@ def _timestamp(value, field):
         raise ValueError(f"{field} must be an ISO-8601 timestamp") from exc
     if parsed.tzinfo is None:
         raise ValueError(f"{field} must include timezone information")
+    return parsed
+
+
+def _timestamp(value, field):
+    _parse_timestamp(value, field)
     return value
 
 
@@ -133,7 +139,7 @@ def append_observation(path, observation):
 
 
 def build_outcome(observation_id, horizon, reference_price, measured_at=None):
-    """Build a separate outcome event; never mutate the original prediction record."""
+    """Build a separate outcome event; source-observation timing is enforced on append."""
     if not isinstance(observation_id, str) or not observation_id.strip():
         raise ValueError("observation_id is required")
     if horizon not in HORIZONS:
@@ -150,8 +156,23 @@ def build_outcome(observation_id, horizon, reference_price, measured_at=None):
     }
 
 
+def _source_observation(observation_path, observation_id):
+    if observation_path is None:
+        raise ValueError("observation_path is required for outcome integrity")
+    matches = [record for record in _read_jsonl(observation_path) if record.get("observation_id") == observation_id]
+    if not matches:
+        raise ValueError("outcome references unknown observation_id")
+    if len(matches) != 1:
+        raise ValueError("duplicate source observation_id in history")
+    observation = matches[0]
+    if observation.get("schema_version") != 1:
+        raise ValueError("unsupported source observation schema_version")
+    _parse_timestamp(observation.get("observed_at"), "observed_at")
+    return observation
+
+
 def append_outcome(path, outcome, observation_path=None):
-    """Append one outcome per observation/horizon; fail closed on corrupt or orphaned evidence."""
+    """Append one correctly timed outcome per observation/horizon; fail closed on bad evidence."""
     if not isinstance(outcome, dict):
         raise ValueError("outcome must be a dictionary")
     observation_id = outcome.get("observation_id")
@@ -159,10 +180,14 @@ def append_outcome(path, outcome, observation_path=None):
     validated = build_outcome(observation_id, horizon, outcome.get("reference_price"), outcome.get("measured_at"))
     if outcome.get("schema_version") != 1:
         raise ValueError("unsupported outcome schema_version")
-    if observation_path is not None:
-        observation_ids = {record.get("observation_id") for record in _read_jsonl(observation_path)}
-        if observation_id not in observation_ids:
-            raise ValueError("outcome references unknown observation_id")
+
+    observation = _source_observation(observation_path, observation_id)
+    observed_at = _parse_timestamp(observation["observed_at"], "observed_at")
+    measured_at = _parse_timestamp(validated["measured_at"], "measured_at")
+    earliest_measurement = observed_at + HORIZON_DELTAS[horizon]
+    if measured_at < earliest_measurement:
+        raise ValueError(f"measured_at is earlier than the {horizon} horizon")
+
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     keys = set()
