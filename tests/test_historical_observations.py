@@ -13,7 +13,7 @@ class HistoricalObservationTests(unittest.TestCase):
             "confidence": 82, "risk": "LOW", "macro_bias": "BULLISH",
             "news_risk": "LOW", "timeframe_conflict": "LOW",
             "trend_votes": {"bullish": 9, "bearish": 1}, "fresh": True,
-            "execution_enabled": False,
+            "execution_enabled": False, "mode": "READ_ONLY",
         }
 
     def test_snapshot_is_deterministic_for_same_time_and_input(self):
@@ -22,6 +22,8 @@ class HistoricalObservationTests(unittest.TestCase):
         second = build_observation(self.view, timestamp)
         self.assertEqual(first, second)
         self.assertFalse(first["prediction"]["execution_enabled"])
+        self.assertEqual(first["prediction"]["source"], "TraderView")
+        self.assertEqual(first["prediction"]["mode"], "READ_ONLY")
         self.assertEqual(first["outcomes"], {})
 
     def test_append_is_idempotent_and_does_not_rewrite_history(self):
@@ -54,11 +56,49 @@ class HistoricalObservationTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_observation(self.view, "2026-07-30T12:00:00")
 
-    def test_snapshot_never_propagates_execution_authority(self):
+    def test_snapshot_rejects_execution_authority_instead_of_sanitizing_it(self):
         unsafe = dict(self.view)
         unsafe["execution_enabled"] = True
-        observation = build_observation(unsafe, "2026-07-30T12:00:00+00:00")
-        self.assertFalse(observation["prediction"]["execution_enabled"])
+        with self.assertRaises(ValueError):
+            build_observation(unsafe, "2026-07-30T12:00:00+00:00")
+
+    def test_snapshot_requires_explicit_read_only_trader_view_contract(self):
+        for key, value in (
+            ("mode", "EXECUTION"),
+            ("symbol", "EURUSD"),
+            ("decision", "STRONG_BUY"),
+            ("permission", "TRADE_NOW"),
+            ("risk", "UNKNOWN"),
+            ("timeframe_conflict", "UNKNOWN"),
+            ("confidence", 101),
+            ("fresh", "yes"),
+        ):
+            unsafe = dict(self.view)
+            unsafe[key] = value
+            with self.subTest(key=key):
+                with self.assertRaises(ValueError):
+                    build_observation(unsafe, "2026-07-30T12:00:00+00:00")
+
+    def test_snapshot_rejects_permission_decision_mismatch_and_stale_allow(self):
+        cases = [
+            {"decision": "NO_TRADE", "permission": "ALLOW_BUYS"},
+            {"decision": "SELL", "permission": "ALLOW_BUYS"},
+            {"decision": "BUY", "permission": "ALLOW_SELLS"},
+            {"decision": "BUY", "permission": "ALLOW_BUYS", "fresh": False},
+        ]
+        for changes in cases:
+            unsafe = dict(self.view)
+            unsafe.update(changes)
+            with self.subTest(changes=changes):
+                with self.assertRaises(ValueError):
+                    build_observation(unsafe, "2026-07-30T12:00:00+00:00")
+
+    def test_safe_blocked_prediction_can_still_be_observed_for_evidence(self):
+        blocked = dict(self.view)
+        blocked.update({"decision": "NO_TRADE", "permission": "BLOCK_TRADING", "fresh": False, "confidence": 0, "risk": "EXTREME"})
+        observation = build_observation(blocked, "2026-07-30T12:00:00+00:00")
+        self.assertEqual(observation["prediction"]["permission"], "BLOCK_TRADING")
+        self.assertFalse(observation["prediction"]["fresh"])
 
     def test_outcome_append_is_idempotent_per_observation_and_horizon(self):
         observation = build_observation(self.view, "2026-07-30T12:00:00+00:00")
