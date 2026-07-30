@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from history.observations import append_observation, build_observation, build_outcome
+from history.observations import append_observation, append_outcome, build_observation, build_outcome
 
 
 class HistoricalObservationTests(unittest.TestCase):
@@ -42,17 +42,48 @@ class HistoricalObservationTests(unittest.TestCase):
         self.assertEqual(outcome["reference_price"], 4100.25)
         self.assertEqual(json.dumps(observation, sort_keys=True), before)
 
-    def test_invalid_horizon_and_price_fail_closed(self):
+    def test_invalid_horizon_price_and_timestamp_fail_closed(self):
         with self.assertRaises(ValueError):
             build_outcome("abc", "30m", 4100)
         with self.assertRaises(ValueError):
             build_outcome("abc", "15m", 0)
+        with self.assertRaises(ValueError):
+            build_outcome("abc", "15m", float("nan"))
+        with self.assertRaises(ValueError):
+            build_outcome("abc", "15m", 4100, "not-a-time")
+        with self.assertRaises(ValueError):
+            build_observation(self.view, "2026-07-30T12:00:00")
 
     def test_snapshot_never_propagates_execution_authority(self):
         unsafe = dict(self.view)
         unsafe["execution_enabled"] = True
         observation = build_observation(unsafe, "2026-07-30T12:00:00+00:00")
         self.assertFalse(observation["prediction"]["execution_enabled"])
+
+    def test_outcome_append_is_idempotent_per_observation_and_horizon(self):
+        observation = build_observation(self.view, "2026-07-30T12:00:00+00:00")
+        outcome = build_outcome(observation["observation_id"], "15m", 4101.0, "2026-07-30T12:15:00+00:00")
+        with tempfile.TemporaryDirectory() as directory:
+            observations = Path(directory) / "observations.jsonl"
+            outcomes = Path(directory) / "outcomes.jsonl"
+            append_observation(observations, observation)
+            self.assertTrue(append_outcome(outcomes, outcome, observations))
+            original = outcomes.read_text(encoding="utf-8")
+            self.assertFalse(append_outcome(outcomes, outcome, observations))
+            self.assertEqual(outcomes.read_text(encoding="utf-8"), original)
+
+    def test_outcome_writer_rejects_orphan_and_corrupt_history(self):
+        outcome = build_outcome("missing", "1h", 4100, "2026-07-30T13:00:00+00:00")
+        with tempfile.TemporaryDirectory() as directory:
+            observations = Path(directory) / "observations.jsonl"
+            outcomes = Path(directory) / "outcomes.jsonl"
+            observations.write_text('{"observation_id":"known"}\n', encoding="utf-8")
+            with self.assertRaises(ValueError):
+                append_outcome(outcomes, outcome, observations)
+            outcomes.write_text("{corrupt\n", encoding="utf-8")
+            known = build_outcome("known", "1h", 4100, "2026-07-30T13:00:00+00:00")
+            with self.assertRaises(ValueError):
+                append_outcome(outcomes, known, observations)
 
 
 if __name__ == "__main__":
