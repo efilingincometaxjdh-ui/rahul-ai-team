@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-07-31
-Branch: `phase2-trader-observation-contract`
+Branch: `phase2-outcome-timing-integrity`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -68,8 +68,9 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Freshness/risk/end-to-end HEAD `06d79b5d`: Tests #67 SUCCESS.
 - Deterministic V1 effective HEAD `8501a1d0`: Tests #75 SUCCESS; PR #5 merged.
 - Phase 2 historical observation HEAD `27f54dca`: Tests #86 SUCCESS; PR #6 merged.
-- Outcome-integrity HEAD `7289267b`: Tests #93 SUCCESS; PR #7 merged after evidence review.
-- Trader View observation-boundary branch: implementation/tests added; fresh CI required before integration.
+- Outcome-integrity HEAD `7289267b`: Tests #93 SUCCESS; PR #7 merged.
+- Trader View boundary HEAD `893fd357`: Tests #100 SUCCESS; PR #8 merged.
+- Outcome-timing branch: implementation and deterministic tests added in draft PR #9; fresh CI required before integration.
 
 ## Contract snapshot
 
@@ -99,26 +100,17 @@ Agent 06 → Trader View → historical evidence:
 - Agent 06 remains the permission authority and is informational/read-only;
 - Trader View must explicitly identify `mode: READ_ONLY`, `symbol: XAUUSD`, and `execution_enabled: false` before becoming a prediction snapshot;
 - historical observation rejects unknown decisions/permissions/risks/conflict states, invalid confidence/freshness, execution authority, stale ALLOW states, and decision/permission mismatches;
-- blocked/NO_TRADE snapshots remain valid evidence when they are safely blocked, so later analytics can measure avoided setups without increasing authority.
+- blocked/NO_TRADE snapshots remain valid evidence when safely blocked.
 
 ## Phase 2 historical evidence — ACTIVE
 
-PR #6 introduced the first append-only observation/outcome contract:
-- immutable prediction snapshots with deterministic observation IDs;
-- append-only JSONL storage with duplicate-ID idempotency;
-- outcomes are separate events and never mutate the prediction snapshot;
-- supported horizons are explicitly `15m`, `1h`, `4h`;
-- invalid horizons and non-positive prices fail validation.
+PR #6 introduced immutable prediction snapshots, deterministic observation IDs, append-only JSONL storage, separate outcomes and explicit `15m`, `1h`, `4h` horizons.
 
-PR #7 hardened outcome integrity:
-- append-only outcome writer without rewriting prediction history;
-- one outcome per `(observation_id, horizon)`;
-- optional orphan-outcome rejection against observation history;
-- timezone-aware ISO-8601 timestamp and schema validation;
-- rejection of NaN/infinite/non-positive prices;
-- fail-closed behavior when existing JSONL is corrupt or structurally invalid.
+PR #7 hardened outcome integrity with one outcome per `(observation_id, horizon)`, orphan rejection, timezone-aware timestamp/schema validation, finite positive-price validation and fail-closed corrupt-history behavior.
 
-Current branch hardens the input boundary so historical predictions can only be constructed from a valid read-only Trader View contract. Unsafe execution-bearing input is rejected rather than silently sanitized.
+PR #8 requires historical predictions to originate from a valid read-only XAUUSD Trader View and rejects unsafe execution-bearing or contradictory inputs.
+
+Draft PR #9 now joins each appended outcome to exactly one source observation and enforces `measured_at >= observed_at + horizon`. Source history is mandatory for append, duplicate source IDs fail closed, malformed source timestamps/schema fail closed, and timezone-offset comparisons are normalized by aware datetime arithmetic. This prevents a future collector from labeling an early price as a valid +15m/+1h/+4h result.
 
 This layer still does **not** choose a live market-price provider, run continuous collection, calculate performance statistics, or create trading authority.
 
@@ -128,15 +120,15 @@ This layer still does **not** choose a live market-price provider, run continuou
 2. Freshness thresholds need later empirical validation against workflow cadence/session behavior.
 3. Agent 01 remains monolithic and credential-dependent but isolated.
 4. Operational orchestration must not accidentally become autonomous execution.
-5. Historical JSONL duplicate checks still scan existing records; adequate for initial evidence volume, but indexing should be hardened before large datasets.
+5. Historical JSONL duplicate checks still scan existing records; adequate initially, but indexing should be hardened before large datasets.
 6. No validated live reference-price source has been selected for outcome measurement.
-7. Outcome timing validates timestamp syntax but does not yet enforce measured-at >= observation time plus the requested horizon; this requires joining observation metadata.
+7. Outcome timing currently enforces a minimum horizon but does not impose a maximum lateness/tolerance window; that policy should be chosen only with collection-cadence evidence.
 
 ## Active Phase 2 loop
 
-1. Obtain clean CI evidence for Trader View → historical prediction boundary and integrate only if green.
-2. Enforce outcome timing integrity against the source observation before operational collection.
-3. Improve Agent 04 explicit multi-timeframe alignment/conflict intelligence without weakening Agent 05 safety authority.
-4. Add safe observation workflow orchestration only after contracts are green.
-5. Select/validate a zero-cost reference-price source before measuring +15m/+1h/+4h outcomes.
+1. Obtain clean CI evidence for draft PR #9 and integrate only if green.
+2. Improve Agent 04 explicit multi-timeframe alignment/conflict intelligence without weakening Agent 05 safety authority.
+3. Add safe observation workflow orchestration only after contracts are green.
+4. Select/validate a zero-cost reference-price source before measuring +15m/+1h/+4h outcomes.
+5. Define evidence-supported outcome lateness tolerance once collection cadence is known.
 6. Build performance analytics only after enough trustworthy observations/outcomes exist; analytics failures must never increase authority.
