@@ -14,24 +14,16 @@ def tech(trend, ema20, ema50, adx=30, rsi=50):
 
 
 def state(status, data, age_minutes=0):
-    return {
-        "status": status,
-        "generated_at": (NOW - timedelta(minutes=age_minutes)).isoformat(),
-        "data": data,
-    }
+    return {"status": status, "generated_at": (NOW - timedelta(minutes=age_minutes)).isoformat(), "data": data}
 
 
 class DecisionEngineTests(unittest.TestCase):
     def test_extreme_risk_blocks_decision(self):
-        result = DecisionEngine().evaluate(
-            {"gold_bias": "BULLISH", "news_risk": "EXTREME"}, tech("Bullish", 2, 1)
-        )
+        result = DecisionEngine().evaluate({"gold_bias": "BULLISH", "news_risk": "EXTREME"}, tech("Bullish", 2, 1))
         self.assertEqual(result["decision"], "NO_TRADE")
 
     def test_bullish_alignment(self):
-        result = DecisionEngine().evaluate(
-            {"gold_bias": "BULLISH", "news_risk": "LOW"}, tech("Bullish", 2, 1)
-        )
+        result = DecisionEngine().evaluate({"gold_bias": "BULLISH", "news_risk": "LOW"}, tech("Bullish", 2, 1))
         self.assertEqual(result["decision"], "STRONG_BULLISH")
 
 
@@ -42,7 +34,7 @@ class Agent04FusionTests(unittest.TestCase):
         self.assertEqual(result["decision"], "NO_TRADE")
         self.assertTrue(errors)
 
-    def test_higher_timeframes_outvote_lower_timeframes(self):
+    def test_higher_timeframes_outvote_lower_timeframes_and_conflict_is_explicit(self):
         a2 = state("SUCCESS", {
             "H4": tech("Bullish", 2050, 2040), "H1": tech("Bullish", 2048, 2041),
             "M15": tech("Bearish", 2038, 2042), "M5": tech("Bearish", 2037, 2043),
@@ -50,12 +42,28 @@ class Agent04FusionTests(unittest.TestCase):
         fused, metadata = fuse_technical_state(a2)
         self.assertEqual(fused["trend"], "Bullish")
         self.assertEqual(metadata["trend_votes"], {"bullish": 7, "bearish": 3})
+        self.assertEqual(metadata["alignment"]["state"], "CONFLICT")
+        self.assertTrue(metadata["alignment"]["cross_group_conflict"])
+        self.assertFalse(metadata["alignment"]["higher_timeframe_conflict"])
+
+    def test_all_directional_timeframes_report_aligned(self):
+        a2 = state("SUCCESS", {tf: tech("Bullish", 2050, 2040) for tf in ("H4", "H1", "M15", "M5")})
+        _, metadata = fuse_technical_state(a2)
+        self.assertEqual(metadata["alignment"]["state"], "ALIGNED")
+        self.assertFalse(metadata["alignment"]["cross_group_conflict"])
+
+    def test_h4_h1_disagreement_is_explicit(self):
+        a2 = state("SUCCESS", {"H4": tech("Bullish", 2050, 2040), "H1": tech("Bearish", 2038, 2042)})
+        _, metadata = fuse_technical_state(a2)
+        self.assertEqual(metadata["alignment"]["state"], "CONFLICT")
+        self.assertTrue(metadata["alignment"]["higher_timeframe_conflict"])
 
     def test_incomplete_timeframe_is_excluded(self):
         a2 = state("SUCCESS", {"H4": tech("Bullish", 2050, 2040), "H1": {"trend": "Bearish", "ema20": 1}})
         fused, metadata = fuse_technical_state(a2)
         self.assertEqual(fused["trend"], "Bullish")
         self.assertEqual(metadata["usable_timeframes"], ["H4"])
+        self.assertEqual(metadata["alignment"]["state"], "ALIGNED")
 
     def test_stale_technical_state_fails_closed(self):
         a2 = state("SUCCESS", {"H4": tech("Bullish", 2, 1)}, age_minutes=21)
