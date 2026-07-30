@@ -1,32 +1,73 @@
 # Rahul AI Team
 
-A ₹0-first modular automation project. The first production component is **Agent 02**, which builds a multi-timeframe XAUUSD technical market state for later intelligence agents to consume.
+Rahul AI Team is modular XAUUSD intelligence infrastructure built around deterministic, fail-closed contracts. It is **not an autonomous trading system**.
 
-## Agent 02 — XAUUSD Market Intelligence
+## Deterministic V1 architecture
 
-Agent 02 requests 100 candles for M5, M15, H1 and H4 from Twelve Data, then calculates EMA20, EMA50, RSI14, ATR14, ADX14 and basic market structure. It writes a normalized state to `data/current/agent02.json`.
+```text
+Agent 02 — Technical Intelligence ─┐
+                                  ├→ Agent 04 — Decision Engine
+Agent 03 — Macro/News Intelligence┘
+                                         ↓
+                              Agent 05 — Permission Engine
+                                         ↓
+                              Agent 06 — Alert Gateway
+                                  (read-only / no execution)
+```
 
-Health values:
+Agent 01 is intentionally isolated from V1 because its LLM macro analysis overlaps Agent 03 and its legacy bot-action path conflicts with the intelligence → decision → permission separation. It is preserved for later research, not silently double-counted.
 
-- `SUCCESS` — all requested timeframes produced usable analysis.
-- `DEGRADED` — at least one timeframe worked, but some data/analysis failed.
-- `FAILED` — no usable timeframe state was produced.
+## Agent 02 — XAUUSD Technical Intelligence
 
-## Configuration
+Requests M5, M15, H1 and H4 candles from Twelve Data and calculates EMA20, EMA50, RSI14, ATR14, ADX14 and market structure. It writes normalized state to `data/current/agent02.json`.
 
-Agent 02 requires one environment variable:
+Health values are `SUCCESS`, `DEGRADED`, or `FAILED`. Agent 04 accepts only structurally usable technical timeframes and requires Agent 02 state to be no more than 20 minutes old.
 
-`TWELVE_DATA_API_KEY`
+Configuration: `TWELVE_DATA_API_KEY` must be supplied as an environment variable / GitHub Actions secret. Never commit credentials.
 
-For GitHub Actions, store it as a repository Actions secret with the same name. Never commit the key.
+## Agent 03 — XAUUSD Macro/News Intelligence
+
+Uses official Federal Reserve RSS sources and deterministic gold-impact headline scoring. It writes `data/current/agent03.json` with `gold_bias`, score, confidence and explicit observed-headline `news_risk`.
+
+RSS risk is `LOW`, `MEDIUM`, or `HIGH`. Agent 03 deliberately does not infer `EXTREME` from keyword counts; that classification is reserved for a future validated event-calendar source. Agent 04 requires Agent 03 state to be no more than six hours old.
+
+## Agent 04 — Decision Engine
+
+Fuses Agent 02 and Agent 03 state. Technical timeframes are weighted H4=4, H1=3, M15=2, M5=1. Trend uses weighted voting while EMA20, EMA50, RSI and ADX use weighted averages.
+
+Missing, malformed, failed, stale or future-dated required intelligence fails closed to `NO_TRADE`, confidence 0 and failed health. A degraded upstream state remains degraded downstream.
+
+Output: `data/current/decision.json`.
+
+## Agent 05 — Permission Engine
+
+The final deterministic safety gate. It maps valid decisions to `ALLOW_BUYS`, `ALLOW_SELLS`, `ALLOW_BOTH`, `CAUTION`, or `BLOCK_TRADING`.
+
+It fails closed on invalid input, unknown decision/risk states, invalid confidence, `NO_TRADE`, `EXTREME` risk and stale Agent 04 state. A degraded Agent 04 state can produce only `CAUTION`, never trading authority. Agent 04 decisions may be at most 15 minutes old.
+
+Output: `data/current/permission.json`.
+
+## Agent 06 — Alert Gateway
+
+Agent 06 is a read-only downstream boundary. It consumes Agent 05 state and emits an alert/status state containing permission, reason, upstream health and freshness. It **does not place, modify or close trades and contains no broker integration**.
+
+## State contract
+
+Normalized state files are written atomically through `utils/json_writer.py` and include `agent`, `version`, UTC `generated_at`, `status`, and `data`, with optional `errors` and `metadata`.
+
+Freshness is a safety contract, not presentation metadata. Stale or invalid timestamps reduce authority and can never create permission.
 
 ## Run locally
 
 ```bash
 python agent02.py
+python agent03.py
+python agent04.py
+python agent05.py
+python agent06.py
 ```
 
-No third-party Python package is currently required.
+Agent 02 requires its API key. Agent 03 requires network access to its official RSS sources. Agents 04–06 consume normalized local state.
 
 ## Tests
 
@@ -34,12 +75,10 @@ No third-party Python package is currently required.
 python -m unittest discover -s tests -v
 ```
 
-The `Tests` GitHub Actions workflow runs automatically on pushes and pull requests.
+The `Tests` GitHub Actions workflow runs on pushes and pull requests. Tests cover deterministic scoring, health/degradation behavior, multi-timeframe fusion, fail-closed permissions, freshness gates and synthetic pipeline contracts.
 
-## Automation
+## Automation and safety
 
-`.github/workflows/agent02.yml` supports manual execution and is scheduled every four hours on weekdays. Each run uploads `agent02.json` as a short-lived workflow artifact so the generated state can be inspected without committing frequently changing market data to the repository.
+Existing intelligence workflows support scheduled/manual collection. Rapidly changing generated market state should be inspected as workflow output/artifacts rather than treated as source code.
 
-## Project direction
-
-The repository is being built as modular intelligence infrastructure rather than an auto-trading system. Future agents can read normalized state through `utils/json_reader.py` and combine technical, news and macro information before any downstream decision/alert layer is added.
+No broker/execution adapter belongs in deterministic V1. The roadmap after V1 stability is automation → historical state/outcome collection → architecture hardening → validated integrations → ML-assisted intelligence/feedback → V2. ML should augment rather than blindly replace deterministic safety gates.
