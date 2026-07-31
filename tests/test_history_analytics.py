@@ -41,10 +41,28 @@ class EvidenceCoverageTests(unittest.TestCase):
             self.assertEqual(1, report["observations"])
             self.assertEqual(3, report["outcomes"])
             self.assertEqual({"15m": 1, "1h": 1, "4h": 1}, report["coverage_by_horizon"])
+            self.assertEqual({"15m": 0, "1h": 0, "4h": 0}, report["missing_by_horizon"])
+            self.assertEqual({"15m": "COMPLETE", "1h": "COMPLETE", "4h": "COMPLETE"}, report["coverage_status_by_horizon"])
             self.assertEqual(1, report["complete_observations"])
             self.assertEqual(0, report["incomplete_observations"])
             self.assertFalse(report["execution_enabled"])
             self.assertEqual("READ_ONLY", report["mode"])
+
+    def test_partial_coverage_is_trader_readable(self):
+        with tempfile.TemporaryDirectory() as temp:
+            observations = Path(temp) / "observations.jsonl"
+            outcomes = Path(temp) / "outcomes.jsonl"
+            first = build_observation(self._view(), "2026-08-01T00:00:00+00:00")
+            second = build_observation(self._view(), "2026-08-01T00:01:00+00:00")
+            append_observation(observations, first)
+            append_observation(observations, second)
+            append_outcome(outcomes, build_outcome(first["observation_id"], "15m", 3300, "2026-08-01T00:15:00+00:00"), observations)
+
+            report = build_evidence_coverage(observations, outcomes)
+
+            self.assertEqual({"15m": 1, "1h": 2, "4h": 2}, report["missing_by_horizon"])
+            self.assertEqual({"15m": "PARTIAL", "1h": "EMPTY", "4h": "EMPTY"}, report["coverage_status_by_horizon"])
+            self.assertFalse(report["execution_enabled"])
 
     def test_incomplete_observation_is_visible(self):
         with tempfile.TemporaryDirectory() as temp:
@@ -60,6 +78,15 @@ class EvidenceCoverageTests(unittest.TestCase):
             self.assertEqual(1, report["incomplete_observations"])
             self.assertEqual(0, report["complete_observations"])
 
+    def test_empty_history_has_empty_status_without_authority(self):
+        with tempfile.TemporaryDirectory() as temp:
+            report = build_evidence_coverage(Path(temp) / "observations.jsonl", Path(temp) / "outcomes.jsonl")
+
+            self.assertEqual("SUCCESS", report["health"])
+            self.assertEqual({"15m": "EMPTY", "1h": "EMPTY", "4h": "EMPTY"}, report["coverage_status_by_horizon"])
+            self.assertEqual({"15m": 0, "1h": 0, "4h": 0}, report["missing_by_horizon"])
+            self.assertFalse(report["execution_enabled"])
+
     def test_corrupt_observation_fails_closed_without_partial_metrics(self):
         with tempfile.TemporaryDirectory() as temp:
             observations = Path(temp) / "observations.jsonl"
@@ -73,6 +100,7 @@ class EvidenceCoverageTests(unittest.TestCase):
             self.assertEqual("FAILED", report["health"])
             self.assertEqual(0, report["observations"])
             self.assertEqual(0, report["outcomes"])
+            self.assertEqual({"15m": "EMPTY", "1h": "EMPTY", "4h": "EMPTY"}, report["coverage_status_by_horizon"])
             self.assertFalse(report["execution_enabled"])
 
     def test_corrupt_outcome_fails_closed_without_partial_metrics(self):
@@ -93,6 +121,7 @@ class EvidenceCoverageTests(unittest.TestCase):
 
             self.assertEqual("FAILED", report["health"])
             self.assertEqual({"15m": 0, "1h": 0, "4h": 0}, report["coverage_by_horizon"])
+            self.assertEqual({"15m": 0, "1h": 0, "4h": 0}, report["missing_by_horizon"])
 
     def test_duplicate_observation_ids_fail_closed(self):
         with tempfile.TemporaryDirectory() as temp:
