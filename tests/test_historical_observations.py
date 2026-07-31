@@ -12,6 +12,10 @@ class HistoricalObservationTests(unittest.TestCase):
             "symbol": "XAUUSD", "decision": "BUY", "permission": "ALLOW_BUYS",
             "confidence": 82, "risk": "LOW", "macro_bias": "BULLISH",
             "news_risk": "LOW", "timeframe_conflict": "LOW",
+            "timeframe_alignment": "ALIGNED",
+            "timeframe_trends": {"H4": "BULLISH", "H1": "BULLISH", "M15": "BULLISH", "M5": "BULLISH"},
+            "higher_timeframe_conflict": False, "lower_timeframe_conflict": False,
+            "cross_group_conflict": False,
             "trend_votes": {"bullish": 9, "bearish": 1}, "fresh": True,
             "execution_enabled": False, "mode": "READ_ONLY",
         }
@@ -25,6 +29,49 @@ class HistoricalObservationTests(unittest.TestCase):
         self.assertEqual(first["prediction"]["source"], "TraderView")
         self.assertEqual(first["prediction"]["mode"], "READ_ONLY")
         self.assertEqual(first["outcomes"], {})
+
+    def test_snapshot_persists_explicit_mtf_intelligence(self):
+        observation = build_observation(self.view, "2026-07-30T12:00:00+00:00")
+        prediction = observation["prediction"]
+        self.assertEqual(prediction["timeframe_alignment"], "ALIGNED")
+        self.assertEqual(prediction["timeframe_trends"]["H4"], "BULLISH")
+        self.assertFalse(prediction["higher_timeframe_conflict"])
+        self.assertFalse(prediction["lower_timeframe_conflict"])
+        self.assertFalse(prediction["cross_group_conflict"])
+        self.assertEqual(observation["schema_version"], 1)
+
+    def test_legacy_trader_view_defaults_mtf_evidence_without_schema_break(self):
+        legacy = dict(self.view)
+        for key in (
+            "timeframe_alignment", "timeframe_trends", "higher_timeframe_conflict",
+            "lower_timeframe_conflict", "cross_group_conflict",
+        ):
+            legacy.pop(key)
+        observation = build_observation(legacy, "2026-07-30T12:00:00+00:00")
+        prediction = observation["prediction"]
+        self.assertEqual(prediction["timeframe_alignment"], "NEUTRAL")
+        self.assertEqual(prediction["timeframe_trends"], {})
+        self.assertFalse(prediction["higher_timeframe_conflict"])
+        self.assertFalse(prediction["lower_timeframe_conflict"])
+        self.assertFalse(prediction["cross_group_conflict"])
+        self.assertEqual(observation["schema_version"], 1)
+
+    def test_snapshot_rejects_malformed_mtf_intelligence(self):
+        cases = [
+            ("timeframe_alignment", "UNKNOWN"),
+            ("timeframe_trends", []),
+            ("timeframe_trends", {"D1": "BULLISH"}),
+            ("timeframe_trends", {"H4": "SIDEWAYS"}),
+            ("higher_timeframe_conflict", "false"),
+            ("lower_timeframe_conflict", 0),
+            ("cross_group_conflict", None),
+        ]
+        for key, value in cases:
+            unsafe = dict(self.view)
+            unsafe[key] = value
+            with self.subTest(key=key, value=value):
+                with self.assertRaises(ValueError):
+                    build_observation(unsafe, "2026-07-30T12:00:00+00:00")
 
     def test_append_is_idempotent_and_does_not_rewrite_history(self):
         observation = build_observation(self.view, "2026-07-30T12:00:00+00:00")
