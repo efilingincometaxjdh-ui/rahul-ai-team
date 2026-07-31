@@ -35,6 +35,11 @@ def build_trader_view(alert_state, decision_state=None, macro_state=None):
     else:
         conflict = "LOW"
 
+    alignment = fusion.get("alignment", {}) if isinstance(fusion.get("alignment", {}), dict) else {}
+    alignment_state = str(alignment.get("state", "NEUTRAL")).upper()
+    if alignment_state not in {"ALIGNED", "CONFLICT", "NEUTRAL"}:
+        alignment_state = "NEUTRAL"
+
     return {
         "symbol": "XAUUSD",
         "decision": decision_data.get("decision", "NO_TRADE"),
@@ -45,7 +50,14 @@ def build_trader_view(alert_state, decision_state=None, macro_state=None):
         "news_risk": macro_data.get("news_risk", "HIGH"),
         "timeframes": fusion.get("usable_timeframes", []),
         "trend_votes": votes,
+        # Keep the legacy ratio-derived severity for compatibility while exposing
+        # Agent04's explicit intelligence separately. Neither field grants authority.
         "timeframe_conflict": conflict,
+        "timeframe_alignment": alignment_state,
+        "timeframe_trends": alignment.get("timeframe_trends", {}),
+        "higher_timeframe_conflict": bool(alignment.get("higher_timeframe_conflict", False)),
+        "lower_timeframe_conflict": bool(alignment.get("lower_timeframe_conflict", False)),
+        "cross_group_conflict": bool(alignment.get("cross_group_conflict", False)),
         "reasons": decision_data.get("reasons", []) + [alert_data.get("reason", "No safe permission available.")],
         "fresh": bool(alert_data.get("fresh", False)),
         "execution_enabled": execution_enabled,
@@ -61,7 +73,7 @@ def main():
     status = "SUCCESS" if view["fresh"] and view["permission"] not in {"BLOCK_TRADING", "CAUTION"} else "DEGRADED"
     write_state(
         agent="TraderView",
-        version="0.1",
+        version="0.2",
         filename="trader_view.json",
         data=view,
         status=status,
@@ -70,7 +82,8 @@ def main():
     )
     print(
         f"XAUUSD | {view['decision']} | {view['permission']} | "
-        f"Confidence {view['confidence']}% | Conflict {view['timeframe_conflict']} | Execution DISABLED"
+        f"Confidence {view['confidence']}% | Alignment {view['timeframe_alignment']} | "
+        f"Conflict {view['timeframe_conflict']} | Execution DISABLED"
     )
 
 
