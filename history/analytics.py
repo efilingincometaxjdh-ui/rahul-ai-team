@@ -28,6 +28,29 @@ def _validate_observation(record):
     return observation_id
 
 
+def _coverage_status(count, total):
+    if total == 0 or count == 0:
+        return "EMPTY"
+    if count == total:
+        return "COMPLETE"
+    return "PARTIAL"
+
+
+def _empty_report(health):
+    return {
+        "health": health,
+        "mode": "READ_ONLY",
+        "execution_enabled": False,
+        "observations": 0,
+        "outcomes": 0,
+        "coverage_by_horizon": {horizon: 0 for horizon in HORIZONS},
+        "missing_by_horizon": {horizon: 0 for horizon in HORIZONS},
+        "coverage_status_by_horizon": {horizon: "EMPTY" for horizon in HORIZONS},
+        "complete_observations": 0,
+        "incomplete_observations": 0,
+    }
+
+
 def build_evidence_coverage(observation_path, outcome_path):
     """Return read-only coverage intelligence, failing closed to zero authority on corrupt evidence."""
     try:
@@ -57,6 +80,11 @@ def build_evidence_coverage(observation_path, outcome_path):
             if all((observation_id, horizon) in outcome_keys for horizon in HORIZONS)
         )
         total = len(observation_ids)
+        missing = {horizon: total - coverage[horizon] for horizon in HORIZONS}
+        statuses = {
+            horizon: _coverage_status(coverage[horizon], total)
+            for horizon in HORIZONS
+        }
         return {
             "health": "SUCCESS",
             "mode": "READ_ONLY",
@@ -64,17 +92,10 @@ def build_evidence_coverage(observation_path, outcome_path):
             "observations": total,
             "outcomes": len(outcome_keys),
             "coverage_by_horizon": coverage,
+            "missing_by_horizon": missing,
+            "coverage_status_by_horizon": statuses,
             "complete_observations": complete,
             "incomplete_observations": total - complete,
         }
     except (OSError, ValueError, TypeError):
-        return {
-            "health": "FAILED",
-            "mode": "READ_ONLY",
-            "execution_enabled": False,
-            "observations": 0,
-            "outcomes": 0,
-            "coverage_by_horizon": {horizon: 0 for horizon in HORIZONS},
-            "complete_observations": 0,
-            "incomplete_observations": 0,
-        }
+        return _empty_report("FAILED")
