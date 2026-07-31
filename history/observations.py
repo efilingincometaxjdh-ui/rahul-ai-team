@@ -13,6 +13,9 @@ KNOWN_DECISIONS = {"BUY", "SELL", "NO_TRADE"}
 KNOWN_PERMISSIONS = {"ALLOW_BUYS", "ALLOW_SELLS", "ALLOW_BOTH", "CAUTION", "BLOCK_TRADING"}
 KNOWN_RISKS = {"LOW", "MEDIUM", "HIGH", "EXTREME"}
 KNOWN_CONFLICTS = {"LOW", "MEDIUM", "HIGH"}
+KNOWN_ALIGNMENTS = {"ALIGNED", "CONFLICT", "NEUTRAL"}
+KNOWN_TRENDS = {"BULLISH", "BEARISH", "NEUTRAL"}
+KNOWN_TIMEFRAMES = {"H4", "H1", "M15", "M5"}
 
 
 def _canonical(value):
@@ -55,6 +58,34 @@ def _read_jsonl(path):
     return records
 
 
+def _validate_alignment_intelligence(trader_view):
+    """Validate optional v0.2 Trader View MTF intelligence without changing authority."""
+    alignment = str(trader_view.get("timeframe_alignment", "NEUTRAL")).upper()
+    if alignment not in KNOWN_ALIGNMENTS:
+        raise ValueError("unknown trader_view timeframe_alignment")
+
+    trends = trader_view.get("timeframe_trends", {})
+    if not isinstance(trends, dict):
+        raise ValueError("trader_view timeframe_trends must be a dictionary")
+    normalized_trends = {}
+    for timeframe, trend in trends.items():
+        if timeframe not in KNOWN_TIMEFRAMES:
+            raise ValueError("unknown trader_view timeframe_trends timeframe")
+        normalized = str(trend).upper()
+        if normalized not in KNOWN_TRENDS:
+            raise ValueError("unknown trader_view timeframe trend")
+        normalized_trends[timeframe] = normalized
+
+    conflicts = {}
+    for field in ("higher_timeframe_conflict", "lower_timeframe_conflict", "cross_group_conflict"):
+        value = trader_view.get(field, False)
+        if not isinstance(value, bool):
+            raise ValueError(f"trader_view {field} must be boolean")
+        conflicts[field] = value
+
+    return alignment, normalized_trends, conflicts
+
+
 def _validate_trader_view(trader_view):
     """Require a safe, read-only Trader View before it can become historical evidence."""
     if not isinstance(trader_view, dict):
@@ -91,10 +122,12 @@ def _validate_trader_view(trader_view):
     if not fresh and permission.startswith("ALLOW_"):
         raise ValueError("stale Trader View cannot carry ALLOW permission")
 
+    return _validate_alignment_intelligence(trader_view)
+
 
 def build_observation(trader_view, observed_at=None):
     """Create an immutable prediction snapshot from the read-only Trader View only."""
-    _validate_trader_view(trader_view)
+    alignment, timeframe_trends, conflicts = _validate_trader_view(trader_view)
     observed_at = _timestamp(observed_at or datetime.now(timezone.utc).isoformat(), "observed_at")
     prediction = {
         "symbol": trader_view["symbol"],
@@ -105,6 +138,11 @@ def build_observation(trader_view, observed_at=None):
         "macro_bias": trader_view.get("macro_bias", "NEUTRAL"),
         "news_risk": trader_view.get("news_risk", "HIGH"),
         "timeframe_conflict": trader_view["timeframe_conflict"],
+        "timeframe_alignment": alignment,
+        "timeframe_trends": timeframe_trends,
+        "higher_timeframe_conflict": conflicts["higher_timeframe_conflict"],
+        "lower_timeframe_conflict": conflicts["lower_timeframe_conflict"],
+        "cross_group_conflict": conflicts["cross_group_conflict"],
         "trend_votes": trader_view.get("trend_votes", {}),
         "fresh": trader_view["fresh"],
         "execution_enabled": False,
