@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-07-31
-Branch: `main`
+Branch: `main` + draft Phase 2 observation-orchestration work
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -79,6 +79,7 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Agent04 MTF intelligence HEAD `78ade145`: Tests #112 SUCCESS; PR #10 merged after clean exact-HEAD CI, mergeability check and zero unresolved review threads.
 - Trader View MTF presentation HEAD `7e242bbd`: Tests #119 SUCCESS; PR #11 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads.
 - Historical MTF evidence HEAD `7720bc5b`: Tests #127 SUCCESS; PR #12 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads.
+- Safe observation orchestration: collector + deterministic boundary tests committed on `phase2/safe-observation-orchestration`; exact-HEAD CI pending. Do not integrate before clean evidence.
 
 ## Contract snapshot
 
@@ -112,6 +113,7 @@ Agent 06 → Trader View → historical evidence:
 - historical observation rejects unknown decisions/permissions/risks/conflict states, invalid confidence/freshness, execution authority, stale ALLOW states, and decision/permission mismatches;
 - prediction snapshots persist validated `timeframe_alignment`, `timeframe_trends`, and higher/lower/cross-group conflict fields while preserving schema v1 compatibility; legacy Trader View inputs receive conservative NEUTRAL/empty/false evidence defaults;
 - blocked/NO_TRADE snapshots remain valid evidence when safely blocked.
+- proposed observation collector accepts only normalized TraderView envelopes with SUCCESS/DEGRADED health, delegates all data safety checks to the existing observation contract, and only appends evidence; FAILED/unknown/malformed envelopes are rejected and cannot affect current trading state.
 
 ## Phase 2 historical evidence — ACTIVE
 
@@ -129,6 +131,8 @@ PR #11 carries that intelligence into Trader View while retaining the Agent06 pe
 
 PR #12 carries explicit MTF intelligence into immutable historical prediction snapshots, validates malformed metadata fail-closed, and preserves compatibility with existing schema-v1 history. Integrated after Tests #127 passed on exact HEAD `7720bc5b`.
 
+Current proposed work adds an explicit evidence-only collector from the normalized `trader_view.json` envelope into append-only observations. It does not schedule itself, invoke upstream agents, write permission/current state, fetch prices, or execute trades.
+
 This layer still does **not** choose a live market-price provider, run continuous collection, calculate performance statistics, or create trading authority.
 
 ## Remaining risks / technical debt
@@ -140,10 +144,11 @@ This layer still does **not** choose a live market-price provider, run continuou
 5. Historical JSONL duplicate checks still scan existing records; adequate initially, but indexing should be hardened before large datasets.
 6. No validated live reference-price source has been selected for outcome measurement.
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
+8. Observation collection cadence is not yet scheduled; cadence should be chosen only after this collector has clean CI and the evidence-volume/freshness implications are reviewed.
 
 ## Active Phase 2 loop
 
-1. Add safe observation workflow orchestration only after downstream contracts remain green.
+1. Obtain exact-HEAD CI for safe observation orchestration; diagnose/fix failures and integrate only if clean and routine.
 2. Select/validate a zero-cost reference-price source before measuring +15m/+1h/+4h outcomes.
 3. Define evidence-supported outcome lateness tolerance once collection cadence is known.
 4. Build performance analytics only after enough trustworthy observations/outcomes exist; analytics failures must never increase authority.
