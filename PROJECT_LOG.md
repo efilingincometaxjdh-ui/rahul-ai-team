@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-08-01
-Branch: `main`
+Branch: `phase2/evidence-coverage-report`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -83,7 +83,8 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Reference-price evidence contract HEAD `100465d5`: Tests #146 SUCCESS; PR #15 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads. PR #14 was deliberately closed unmerged after architecture-log drift was detected despite clean CI.
 - Gold API reference adapter HEAD `feae6fbb`: Tests #152 SUCCESS; PR #16 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads. Adapter is transport-free and requires provider `updatedAt`.
 - Outcome orchestration HEAD `53cbeee7`: Tests #158 SUCCESS; PR #17 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads. Collector remains transport-free and uses validated provider evidence timestamp as `measured_at`.
-- Existing outcome-history semantic-integrity HEAD `0c3593eb`: Tests #166 SUCCESS; PR #18 remains draft pending log-sync CI after the milestone was recorded.
+- Existing outcome-history semantic-integrity final HEAD `0bba99ba`: Tests #168 SUCCESS; PR #18 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads.
+- Evidence coverage analytics initial code/test HEAD `c84b2b9f`: PR #19 draft; exact-HEAD CI pending after log synchronization.
 
 ## Contract snapshot
 
@@ -119,7 +120,7 @@ Agent 06 → Trader View → historical evidence:
 - blocked/NO_TRADE snapshots remain valid evidence when safely blocked;
 - observation collector accepts only normalized TraderView envelopes with SUCCESS/DEGRADED health, delegates data safety checks to the existing observation contract, and only appends evidence; FAILED/unknown/malformed envelopes are rejected and cannot affect current trading state.
 
-Reference-price evidence → future outcome collector:
+Reference-price evidence → outcome collector → analytics:
 - must explicitly identify `symbol: XAUUSD`, `market: SPOT`, `quote_currency: USD`;
 - provider identity is mandatory and `requires_credentials` must be exactly false;
 - price must be finite and positive and `observed_at` must be timezone-aware ISO-8601;
@@ -127,7 +128,8 @@ Reference-price evidence → future outcome collector:
 - Gold API adapter accepts only XAU payloads, requires provider `updatedAt`, and delegates validation to the provider-neutral contract;
 - adapter is transport-free: no network, scheduling, broker or execution path;
 - outcome collector consumes already-fetched validated reference evidence, uses the provider `observed_at` as `measured_at`, and delegates observation identity, horizon timing and idempotency to the append-only outcome contract;
-- every persisted outcome must itself pass schema, horizon, finite-positive price, timezone-aware timestamp, source-observation linkage and horizon-timing validation before it can participate in duplicate/idempotency checks; duplicate keys already present in persisted history fail closed.
+- every persisted outcome must itself pass schema, horizon, finite-positive price, timezone-aware timestamp, source-observation linkage and horizon-timing validation before it can participate in duplicate/idempotency checks; duplicate keys already present in persisted history fail closed;
+- evidence coverage analytics is read-only, validates persisted observations/outcomes before counting, reports +15m/+1h/+4h coverage and complete/incomplete observation counts, and returns FAILED with zero metrics on corrupt/duplicate evidence; it always exposes `execution_enabled: false`.
 
 ## Phase 2 historical evidence — ACTIVE
 
@@ -153,9 +155,11 @@ PR #16 validates gold-api.com as the first reference-evidence candidate through 
 
 PR #17 integrates a transport-free outcome collector for already-fetched validated reference evidence. It uses the provider timestamp as `measured_at`, then delegates source-observation, supported-horizon, timing and idempotency integrity to the append-only outcome contract. Integrated after Tests #158 passed on exact HEAD `53cbeee7`.
 
-PR #18 hardens existing persisted outcome history before idempotency admission. Every prior record is semantically rebuilt and validated, must link to a valid source observation, must satisfy its horizon timing, and duplicate persisted `(observation_id, horizon)` keys fail closed. Exact code/test HEAD `0c3593eb` passed Tests #166; integration awaits exact-HEAD CI after this log update.
+PR #18 hardens existing persisted outcome history before idempotency admission. Every prior record is semantically rebuilt and validated, must link to a valid source observation, must satisfy its horizon timing, and duplicate persisted `(observation_id, horizon)` keys fail closed. Integrated after final exact HEAD `0bba99ba` passed Tests #168.
 
-This layer still does **not** run continuous collection, calculate performance statistics, or create trading authority.
+PR #19 is the active loop: a read-only evidence coverage report validates persisted observations and outcomes before counting them, exposes per-horizon coverage plus complete/incomplete observations, and fails closed to FAILED/zero metrics on corruption or duplicates. It cannot affect Agent05/06 authority and always exposes `execution_enabled: false`.
+
+This layer still does **not** run continuous collection, calculate directional/performance statistics, or create trading authority.
 
 ## Remaining risks / technical debt
 
@@ -167,10 +171,12 @@ This layer still does **not** run continuous collection, calculate performance s
 6. Gold API has passed the transport-free evidence adapter contract, but live network collection is not yet integrated or operationally validated.
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
 8. Observation/outcome collection cadence is not yet scheduled; cadence should be chosen only after evidence-volume/freshness implications and reference-price sourcing are reviewed.
+9. Coverage analytics currently reports evidence completeness only; directional/performance statistics require an explicit source/reference-price-at-observation contract before they can be trustworthy.
 
 ## Active Phase 2 loop
 
-1. Integrate PR #18 only after the log-update exact HEAD has clean CI, mergeability and review-thread evidence.
-2. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
-3. Build trader-accessible evidence coverage/analytics only after trustworthy observation/outcome integrity is established; analytics failures must never increase authority.
-4. Harden historical indexing only when evidence volume justifies it.
+1. Validate PR #19 on its exact log-synchronized HEAD; critique any failures and fix rather than bypassing them.
+2. Integrate PR #19 only after clean exact-HEAD CI, mergeability and review-thread evidence.
+3. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
+4. Add directional/performance analytics only after a trustworthy observation-time reference-price contract exists; analytics failures must never increase authority.
+5. Harden historical indexing only when evidence volume justifies it.
