@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-07-31
-Branch: `main`
+Branch: `phase2/trader-view-mtf-intelligence` (proposed against `main`)
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -55,6 +55,11 @@ Status: INTEGRATED v0.1.
 
 Read-only downstream boundary consuming `permission.json`. Agent 05 state max age 15 minutes. Missing/malformed/failed/stale/future-dated/unknown permission state emits `BLOCK_TRADING` and FAILED health. Degraded upstream authority is downgraded to CAUTION. Every alert explicitly contains `execution_enabled: false`. There is no broker library, order placement, trade modification or trade-closing path.
 
+### Trader View
+Status: INTEGRATED v0.1; v0.2 PROPOSED.
+
+The Phase 2 v0.2 change exposes Agent04 `ALIGNED / CONFLICT / NEUTRAL`, per-timeframe trends, higher-timeframe conflict, lower-timeframe conflict and higher-vs-lower conflict directly to the trader-readable read-only view. Legacy ratio-derived conflict severity remains for compatibility. Unknown alignment metadata degrades to NEUTRAL intelligence and never changes Agent05/06 permission authority. Execution remains disabled.
+
 ### Agent 01 — Legacy LLM Macro Analyst
 Status: ISOLATED / LEGACY.
 
@@ -72,6 +77,7 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Trader View boundary HEAD `893fd357`: Tests #100 SUCCESS; PR #8 merged.
 - Outcome-timing HEAD `726dcdbc`: Tests #107 SUCCESS; PR #9 merged.
 - Agent04 MTF intelligence HEAD `78ade145`: Tests #112 SUCCESS; PR #10 merged after clean exact-HEAD CI, mergeability check and zero unresolved review threads.
+- Trader View MTF presentation: implementation/tests committed on `phase2/trader-view-mtf-intelligence`; fresh exact-HEAD CI required before integration.
 
 ## Contract snapshot
 
@@ -101,6 +107,7 @@ Agent 05 → Agent 06:
 Agent 06 → Trader View → historical evidence:
 - Agent 06 remains the permission authority and is informational/read-only;
 - Trader View must explicitly identify `mode: READ_ONLY`, `symbol: XAUUSD`, and `execution_enabled: false` before becoming a prediction snapshot;
+- Trader View v0.2 presents Agent04 alignment/conflict intelligence without modifying permission;
 - historical observation rejects unknown decisions/permissions/risks/conflict states, invalid confidence/freshness, execution authority, stale ALLOW states, and decision/permission mismatches;
 - blocked/NO_TRADE snapshots remain valid evidence when safely blocked.
 
@@ -116,6 +123,8 @@ PR #9 joins every appended outcome to exactly one source observation and enforce
 
 PR #10 adds explicit Agent04 multi-timeframe alignment/conflict intelligence while preserving deterministic weighted fusion and downstream safety authority.
 
+Current proposed work carries that intelligence into Trader View while retaining the existing Agent06 permission boundary and `execution_enabled: false` invariant.
+
 This layer still does **not** choose a live market-price provider, run continuous collection, calculate performance statistics, or create trading authority.
 
 ## Remaining risks / technical debt
@@ -127,13 +136,14 @@ This layer still does **not** choose a live market-price provider, run continuou
 5. Historical JSONL duplicate checks still scan existing records; adequate initially, but indexing should be hardened before large datasets.
 6. No validated live reference-price source has been selected for outcome measurement.
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
-8. Trader-accessible presentation should surface Agent04 conflict metadata without implying execution authority.
+8. Historical observation schema does not yet persist the new explicit alignment detail; decide this as a backward-compatible evidence-contract extension after Trader View CI is clean.
 
 ## Active Phase 2 loop
 
-1. Validate Trader Data/Alert presentation of Agent04 alignment/conflict metadata through the read-only chain without weakening Agent05 authority.
-2. Add safe observation workflow orchestration only after downstream contracts remain green.
-3. Select/validate a zero-cost reference-price source before measuring +15m/+1h/+4h outcomes.
-4. Define evidence-supported outcome lateness tolerance once collection cadence is known.
-5. Build performance analytics only after enough trustworthy observations/outcomes exist; analytics failures must never increase authority.
-6. Harden historical indexing only when evidence volume justifies it.
+1. Obtain clean exact-HEAD CI for Trader View v0.2 and integrate only if review/merge evidence is clean.
+2. Extend historical observation evidence with explicit Agent04 alignment fields using a backward-compatible durable contract.
+3. Add safe observation workflow orchestration only after downstream contracts remain green.
+4. Select/validate a zero-cost reference-price source before measuring +15m/+1h/+4h outcomes.
+5. Define evidence-supported outcome lateness tolerance once collection cadence is known.
+6. Build performance analytics only after enough trustworthy observations/outcomes exist; analytics failures must never increase authority.
+7. Harden historical indexing only when evidence volume justifies it.
