@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-07-31
-Branch: `main`
+Branch: `main` + draft PR #12
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -78,6 +78,7 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Outcome-timing HEAD `726dcdbc`: Tests #107 SUCCESS; PR #9 merged.
 - Agent04 MTF intelligence HEAD `78ade145`: Tests #112 SUCCESS; PR #10 merged after clean exact-HEAD CI, mergeability check and zero unresolved review threads.
 - Trader View MTF presentation HEAD `7e242bbd`: Tests #119 SUCCESS; PR #11 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads.
+- Historical MTF evidence PR #12: implementation + deterministic tests committed; exact-HEAD CI pending. Do not merge before clean evidence.
 
 ## Contract snapshot
 
@@ -109,6 +110,7 @@ Agent 06 → Trader View → historical evidence:
 - Trader View must explicitly identify `mode: READ_ONLY`, `symbol: XAUUSD`, and `execution_enabled: false` before becoming a prediction snapshot;
 - Trader View v0.2 presents Agent04 alignment/conflict intelligence without modifying permission;
 - historical observation rejects unknown decisions/permissions/risks/conflict states, invalid confidence/freshness, execution authority, stale ALLOW states, and decision/permission mismatches;
+- PR #12 extends new prediction snapshots with validated `timeframe_alignment`, `timeframe_trends`, and higher/lower/cross-group conflict fields while preserving schema v1 compatibility; legacy Trader View inputs receive conservative NEUTRAL/empty/false evidence defaults;
 - blocked/NO_TRADE snapshots remain valid evidence when safely blocked.
 
 ## Phase 2 historical evidence — ACTIVE
@@ -125,6 +127,8 @@ PR #10 adds explicit Agent04 multi-timeframe alignment/conflict intelligence whi
 
 PR #11 carries that intelligence into Trader View while retaining the Agent06 permission boundary and `execution_enabled: false` invariant.
 
+PR #12 (draft) carries explicit MTF intelligence into immutable historical prediction snapshots, validates malformed metadata fail-closed, and preserves compatibility with existing schema-v1 history. Exact-HEAD CI is required before integration.
+
 This layer still does **not** choose a live market-price provider, run continuous collection, calculate performance statistics, or create trading authority.
 
 ## Remaining risks / technical debt
@@ -136,11 +140,11 @@ This layer still does **not** choose a live market-price provider, run continuou
 5. Historical JSONL duplicate checks still scan existing records; adequate initially, but indexing should be hardened before large datasets.
 6. No validated live reference-price source has been selected for outcome measurement.
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
-8. Historical observation schema does not yet persist the new explicit alignment detail; add it as a backward-compatible evidence-contract extension.
+8. PR #12 historical MTF contract is not integrated until exact-HEAD CI is clean.
 
 ## Active Phase 2 loop
 
-1. Extend historical observation evidence with explicit Agent04 alignment fields using a backward-compatible durable contract.
+1. Obtain exact-HEAD CI evidence for PR #12; diagnose/fix failures and integrate only if clean and routine.
 2. Add safe observation workflow orchestration only after downstream contracts remain green.
 3. Select/validate a zero-cost reference-price source before measuring +15m/+1h/+4h outcomes.
 4. Define evidence-supported outcome lateness tolerance once collection cadence is known.
