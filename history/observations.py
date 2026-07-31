@@ -6,6 +6,7 @@ import math
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+
 HORIZONS = ("15m", "1h", "4h")
 HORIZON_DELTAS = {"15m": timedelta(minutes=15), "1h": timedelta(hours=1), "4h": timedelta(hours=4)}
 KNOWN_DECISIONS = {"BUY", "SELL", "NO_TRADE"}
@@ -58,9 +59,11 @@ def _read_jsonl(path):
 
 
 def _validate_alignment_intelligence(trader_view):
+    """Validate optional v0.2 Trader View MTF intelligence without changing authority."""
     alignment = str(trader_view.get("timeframe_alignment", "NEUTRAL")).upper()
     if alignment not in KNOWN_ALIGNMENTS:
         raise ValueError("unknown trader_view timeframe_alignment")
+
     trends = trader_view.get("timeframe_trends", {})
     if not isinstance(trends, dict):
         raise ValueError("trader_view timeframe_trends must be a dictionary")
@@ -72,16 +75,19 @@ def _validate_alignment_intelligence(trader_view):
         if normalized not in KNOWN_TRENDS:
             raise ValueError("unknown trader_view timeframe trend")
         normalized_trends[timeframe] = normalized
+
     conflicts = {}
     for field in ("higher_timeframe_conflict", "lower_timeframe_conflict", "cross_group_conflict"):
         value = trader_view.get(field, False)
         if not isinstance(value, bool):
             raise ValueError(f"trader_view {field} must be boolean")
         conflicts[field] = value
+
     return alignment, normalized_trends, conflicts
 
 
 def _validate_trader_view(trader_view):
+    """Require a safe, read-only Trader View before it can become historical evidence."""
     if not isinstance(trader_view, dict):
         raise ValueError("trader_view must be a dictionary")
     if trader_view.get("symbol") != "XAUUSD":
@@ -104,6 +110,7 @@ def _validate_trader_view(trader_view):
     fresh = trader_view.get("fresh")
     if not isinstance(fresh, bool):
         raise ValueError("trader_view fresh must be boolean")
+
     permission = trader_view["permission"]
     decision = trader_view["decision"]
     if decision == "NO_TRADE" and permission.startswith("ALLOW_"):
@@ -114,29 +121,46 @@ def _validate_trader_view(trader_view):
         raise ValueError("ALLOW_SELLS requires SELL decision")
     if not fresh and permission.startswith("ALLOW_"):
         raise ValueError("stale Trader View cannot carry ALLOW permission")
+
     return _validate_alignment_intelligence(trader_view)
 
 
 def build_observation(trader_view, observed_at=None):
+    """Create an immutable prediction snapshot from the read-only Trader View only."""
     alignment, timeframe_trends, conflicts = _validate_trader_view(trader_view)
     observed_at = _timestamp(observed_at or datetime.now(timezone.utc).isoformat(), "observed_at")
     prediction = {
-        "symbol": trader_view["symbol"], "decision": trader_view["decision"],
-        "permission": trader_view["permission"], "confidence": trader_view["confidence"],
-        "risk": trader_view["risk"], "macro_bias": trader_view.get("macro_bias", "NEUTRAL"),
-        "news_risk": trader_view.get("news_risk", "HIGH"), "timeframe_conflict": trader_view["timeframe_conflict"],
-        "timeframe_alignment": alignment, "timeframe_trends": timeframe_trends,
+        "symbol": trader_view["symbol"],
+        "decision": trader_view["decision"],
+        "permission": trader_view["permission"],
+        "confidence": trader_view["confidence"],
+        "risk": trader_view["risk"],
+        "macro_bias": trader_view.get("macro_bias", "NEUTRAL"),
+        "news_risk": trader_view.get("news_risk", "HIGH"),
+        "timeframe_conflict": trader_view["timeframe_conflict"],
+        "timeframe_alignment": alignment,
+        "timeframe_trends": timeframe_trends,
         "higher_timeframe_conflict": conflicts["higher_timeframe_conflict"],
         "lower_timeframe_conflict": conflicts["lower_timeframe_conflict"],
         "cross_group_conflict": conflicts["cross_group_conflict"],
-        "trend_votes": trader_view.get("trend_votes", {}), "fresh": trader_view["fresh"],
-        "execution_enabled": False, "source": "TraderView", "mode": "READ_ONLY",
+        "trend_votes": trader_view.get("trend_votes", {}),
+        "fresh": trader_view["fresh"],
+        "execution_enabled": False,
+        "source": "TraderView",
+        "mode": "READ_ONLY",
     }
     fingerprint = hashlib.sha256(_canonical({"observed_at": observed_at, "prediction": prediction}).encode()).hexdigest()[:20]
-    return {"observation_id": fingerprint, "observed_at": observed_at, "prediction": prediction, "outcomes": {}, "schema_version": 1}
+    return {
+        "observation_id": fingerprint,
+        "observed_at": observed_at,
+        "prediction": prediction,
+        "outcomes": {},
+        "schema_version": 1,
+    }
 
 
 def append_observation(path, observation):
+    """Append once by observation_id. Existing or corrupt history is never rewritten."""
     if not isinstance(observation, dict) or not observation.get("observation_id"):
         raise ValueError("observation_id is required")
     _timestamp(observation.get("observed_at"), "observed_at")
@@ -153,6 +177,7 @@ def append_observation(path, observation):
 
 
 def build_outcome(observation_id, horizon, reference_price, measured_at=None):
+    """Build a separate outcome event; source-observation timing is enforced on append."""
     if not isinstance(observation_id, str) or not observation_id.strip():
         raise ValueError("observation_id is required")
     if horizon not in HORIZONS:
@@ -160,7 +185,13 @@ def build_outcome(observation_id, horizon, reference_price, measured_at=None):
     if isinstance(reference_price, bool) or not isinstance(reference_price, (int, float)) or not math.isfinite(reference_price) or reference_price <= 0:
         raise ValueError("reference_price must be a finite positive number")
     measured_at = _timestamp(measured_at or datetime.now(timezone.utc).isoformat(), "measured_at")
-    return {"observation_id": observation_id, "horizon": horizon, "reference_price": float(reference_price), "measured_at": measured_at, "schema_version": 1}
+    return {
+        "observation_id": observation_id,
+        "horizon": horizon,
+        "reference_price": float(reference_price),
+        "measured_at": measured_at,
+        "schema_version": 1,
+    }
 
 
 def _source_observation(observation_path, observation_id):
@@ -185,8 +216,10 @@ def _validate_existing_outcome(record, observation_path):
     if record.get("schema_version") != 1:
         raise ValueError("unsupported existing outcome schema_version")
     validated = build_outcome(
-        record.get("observation_id"), record.get("horizon"),
-        record.get("reference_price"), record.get("measured_at"),
+        record.get("observation_id"),
+        record.get("horizon"),
+        record.get("reference_price"),
+        record.get("measured_at"),
     )
     observation = _source_observation(observation_path, validated["observation_id"])
     observed_at = _parse_timestamp(observation["observed_at"], "observed_at")
@@ -205,11 +238,14 @@ def append_outcome(path, outcome, observation_path=None):
     validated = build_outcome(observation_id, horizon, outcome.get("reference_price"), outcome.get("measured_at"))
     if outcome.get("schema_version") != 1:
         raise ValueError("unsupported outcome schema_version")
+
     observation = _source_observation(observation_path, observation_id)
     observed_at = _parse_timestamp(observation["observed_at"], "observed_at")
     measured_at = _parse_timestamp(validated["measured_at"], "measured_at")
-    if measured_at < observed_at + HORIZON_DELTAS[horizon]:
+    earliest_measurement = observed_at + HORIZON_DELTAS[horizon]
+    if measured_at < earliest_measurement:
         raise ValueError(f"measured_at is earlier than the {horizon} horizon")
+
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     keys = set()
