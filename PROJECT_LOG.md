@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-08-01
-Branch: `phase2/evidence-coverage-report`
+Branch: `phase2/evidence-coverage-readability`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -84,7 +84,8 @@ It overlaps Agent 03 and contains a legacy bot-action path that conflicts with i
 - Gold API reference adapter HEAD `feae6fbb`: Tests #152 SUCCESS; PR #16 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads. Adapter is transport-free and requires provider `updatedAt`.
 - Outcome orchestration HEAD `53cbeee7`: Tests #158 SUCCESS; PR #17 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads. Collector remains transport-free and uses validated provider evidence timestamp as `measured_at`.
 - Existing outcome-history semantic-integrity final HEAD `0bba99ba`: Tests #168 SUCCESS; PR #18 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads.
-- Evidence coverage analytics initial code/test HEAD `c84b2b9f`: PR #19 draft; exact-HEAD CI pending after log synchronization.
+- Evidence coverage analytics initial code/test HEAD `c84b2b9f`: PR #19 merged after exact-HEAD CI success, mergeability check and zero unresolved review threads.
+- Evidence coverage readability HEAD `2682b0ad`: PR #20 draft; exact-HEAD CI pending after log synchronization.
 
 ## Contract snapshot
 
@@ -157,7 +158,9 @@ PR #17 integrates a transport-free outcome collector for already-fetched validat
 
 PR #18 hardens existing persisted outcome history before idempotency admission. Every prior record is semantically rebuilt and validated, must link to a valid source observation, must satisfy its horizon timing, and duplicate persisted `(observation_id, horizon)` keys fail closed. Integrated after final exact HEAD `0bba99ba` passed Tests #168.
 
-PR #19 is the active loop: a read-only evidence coverage report validates persisted observations and outcomes before counting them, exposes per-horizon coverage plus complete/incomplete observations, and fails closed to FAILED/zero metrics on corruption or duplicates. It cannot affect Agent05/06 authority and always exposes `execution_enabled: false`.
+PR #19 now integrates the read-only evidence coverage report. It validates persisted observations and outcomes before counting them, exposes per-horizon coverage plus complete/incomplete observations, and fails closed to FAILED/zero metrics on corruption or duplicates. It cannot affect Agent05/06 authority and always exposes `execution_enabled: false`.
+
+PR #20 is the active draft: it extends evidence coverage with deterministic per-horizon missing counts and EMPTY/PARTIAL/COMPLETE status while remaining read-only and fail-closed.
 
 This layer still does **not** run continuous collection, calculate directional/performance statistics, or create trading authority.
 
@@ -175,8 +178,8 @@ This layer still does **not** run continuous collection, calculate directional/p
 
 ## Active Phase 2 loop
 
-1. Validate PR #19 on its exact log-synchronized HEAD; critique any failures and fix rather than bypassing them.
-2. Integrate PR #19 only after clean exact-HEAD CI, mergeability and review-thread evidence.
+1. Validate PR #20 on its exact log-synchronized HEAD; critique any failures and fix rather than bypassing them.
+2. Integrate PR #20 only after clean exact-HEAD CI, mergeability and review-thread evidence.
 3. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
 4. Add directional/performance analytics only after a trustworthy observation-time reference-price contract exists; analytics failures must never increase authority.
 5. Harden historical indexing only when evidence volume justifies it.
