@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-08-08
-Branch: `main`
+Branch: `phase2/historical-replay`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -28,15 +28,19 @@ Agent 01 remains isolated. Keltner Bot 2.0 is a separate next project.
 
 ## Safety status
 
-Agent 05 remains the final deterministic permission authority and fails closed on invalid, stale or unsafe Agent 04 state. Agent 06 remains read-only and explicitly exposes `execution_enabled: false`. Historical and market-data work is evidence-only and does not create trading authority.
+Agent 05 remains the final deterministic permission authority and fails closed on invalid, stale or unsafe Agent 04 state. Agent 06 remains read-only and explicitly exposes `execution_enabled: false`. Historical, replay and market-data work is evidence-only and does not create trading authority.
 
 ## Current Phase 2 milestone
 
 PR #20 merged on 2026-08-01, integrating deterministic per-horizon evidence-coverage missing counts and EMPTY/PARTIAL/COMPLETE status while remaining read-only and fail-closed.
 
-PR #21 — historical XAUUSD ingestion — has now been integrated into `main` at merge commit `66f84839c7d31a50a51ae51c29436675caf617db` after corrected exact-head CI passed (Tests run #206). The implementation reuses the existing Agent02 `IMarketDataProvider` / `TwelveDataProvider` transport rather than duplicating provider integration.
+PR #21 — historical XAUUSD ingestion — integrated into `main` at merge commit `66f84839c7d31a50a51ae51c29436675caf617db` after corrected exact-head CI passed (Tests run #206). The implementation reuses the existing Agent02 `IMarketDataProvider` / `TwelveDataProvider` transport rather than duplicating provider integration.
 
 PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. Empty provider results are a true no-op and do not create storage. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
+
+The next single Phase 2 task is **deterministic historical replay infrastructure** over the validated append-only candle contract. The replay layer is intentionally transport-free and evidence-only.
+
+This branch adds `market/replay.py`: it validates the complete persisted candle dataset before invoking any callback, requires strict chronological ordering and unique timestamps, and replays candles exactly once with deterministic sequence numbers. Malformed, duplicate or out-of-order history fails before callbacks receive any candle.
 
 ## Contract snapshot
 
@@ -67,7 +71,7 @@ Agent 06 → Trader View → historical evidence:
 - Agent 06 remains the permission authority and is informational/read-only;
 - Trader View must explicitly identify `mode: READ_ONLY`, `symbol: XAUUSD`, and `execution_enabled: false` before becoming a prediction snapshot;
 - historical evidence rejects execution-bearing inputs and preserves immutable predictions with separately appended outcomes;
-- analytics is read-only and cannot increase trading authority.
+- analytics and replay are read-only and cannot increase trading authority.
 
 Historical market-data ingestion:
 - uses the existing `IMarketDataProvider` / `TwelveDataProvider` path rather than duplicating transport;
@@ -77,14 +81,19 @@ Historical market-data ingestion:
 - empty provider results are a true no-op and do not create empty history files;
 - ingestion is evidence-only and never writes current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
+Replay contract:
+- validates the entire persisted candle file before any callback is invoked;
+- requires unique, strictly increasing normalized timestamps;
+- missing history is an empty replay and does not create storage;
+- replay emits deterministic zero-based sequence numbers and copied candle records;
+- replay performs no networking, scheduling, current-state writes, permission evaluation, alert generation or execution.
+
 ## CI / test evidence
 
 - `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
-- Deterministic V1 and all previously merged Phase 2 milestones through PR #20 have recorded clean CI evidence in the prior project history.
-- PR #21 initial exact-head CI (run #198) failed in downloader tests due to string-path handling; corrected with `Path(...)` normalization.
-- Corrected PR #21 merge CI (run #202) reached 105 tests and failed only `test_empty_values_no_write`; the downloader was corrected so empty input is a true no-op.
-- Final PR #21 exact-head CI run #206: **SUCCESS**.
-- PR #21 merged only after clean CI, mergeability and zero unresolved review threads.
+- Deterministic V1 and all previously merged Phase 2 milestones through PR #21 have recorded clean CI evidence in the prior project history.
+- PR #21 final exact-head CI run #206: **SUCCESS** and PR #21 merged after clean CI, mergeability and zero unresolved review threads.
+- Replay tests are now deterministic and cover chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation. CI evidence for this branch is pending PR execution.
 
 ## Remaining risks / technical debt
 
@@ -100,8 +109,9 @@ Historical market-data ingestion:
 
 ## Active Phase 2 loop
 
-1. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
-2. Add directional/performance analytics only after a trustworthy observation-time reference-price contract exists; analytics failures must never increase authority.
-3. Harden historical indexing only when evidence volume justifies it.
-4. Consider replay infrastructure only after the persisted historical candle contract is exercised against a sufficiently representative dataset; replay remains evidence-only and must not invoke Agent05/06 execution authority.
-5. Add feature extraction only as deterministic, versioned evidence transforms over validated historical candles; feature failures must fail closed for analytics without increasing trading authority.
+1. Validate the historical replay branch on exact HEAD; critique any CI failures and fix rather than bypassing them.
+2. Integrate replay only after clean exact-HEAD CI, mergeability and review-thread evidence.
+3. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
+4. Add deterministic feature extraction as versioned evidence transforms over validated historical candles.
+5. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+6. Harden historical indexing only when evidence volume justifies it.
