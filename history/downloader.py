@@ -44,9 +44,13 @@ def _utc_iso(dt_str: str) -> str:
 def append_candles_jsonl(filepath: Path, candles: List[Dict]) -> int:
     """Append candles to filepath JSONL, skipping duplicates by datetime.
 
+    Empty input is a true no-op: it must not create a directory or file.
     Returns number of appended candles.
     """
     filepath = Path(filepath)
+    if not candles:
+        return 0
+
     _ensure_dir(filepath.parent)
     existing = set()
     if filepath.exists():
