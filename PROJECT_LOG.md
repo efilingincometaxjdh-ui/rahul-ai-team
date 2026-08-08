@@ -42,6 +42,8 @@ PR #22 — deterministic historical replay — integrated into `main` at merge c
 
 PR #22 adds `market/replay.py`: it validates the complete persisted candle dataset before invoking any callback, requires strict chronological ordering and unique timestamps, and replays candles exactly once with deterministic zero-based sequence numbers. Malformed, duplicate or out-of-order history fails before callbacks receive any candle. Replay does not invoke Agent04/05/06, perform networking, write current state or create execution authority.
 
+PR #23 — versioned deterministic feature extraction — opened on 2026-08-08 as the next single Phase 2 task. The transform consumes validated chronological historical candles, reuses Agent02's existing indicator implementations, emits per-candle evidence records with explicit schema/transform versions and warm-up readiness, and has deterministic tests for reproducibility and fail-closed input validation. Exact-head CI is pending; the PR is not merged.
+
 ## Contract snapshot
 
 Agent 02 → Agent 04:
@@ -88,6 +90,13 @@ Replay contract:
 - replay emits deterministic zero-based sequence numbers and copied candle records;
 - replay performs no networking, scheduling, current-state writes, permission evaluation, alert generation or execution.
 
+Feature extraction contract:
+- consumes only validated, strictly chronological historical candles;
+- reuses Agent02 indicator implementations rather than duplicating technical-indicator formulas;
+- emits one immutable evidence record per candle with `schema_version`, `transform_version`, timestamp, technical features and explicit warm-up `ready` state;
+- duplicate, out-of-order, malformed or non-finite inputs fail closed before feature output is returned;
+- feature extraction performs no networking, scheduling, current-state writes, permission evaluation, alert generation or execution.
+
 ## CI / test evidence
 
 - `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
@@ -95,6 +104,7 @@ Replay contract:
 - PR #21 final exact-head CI run #206: **SUCCESS** and PR #21 merged after clean CI, mergeability and zero unresolved review threads.
 - PR #22 exact-head CI run #213: **SUCCESS** with deterministic replay tests covering chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation.
 - PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
+- PR #23 exact-head CI is pending; no success is claimed until GitHub Actions reports it.
 
 ## Remaining risks / technical debt
 
