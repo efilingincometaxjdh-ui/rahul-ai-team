@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-08-08
-Branch: `phase2/historical-replay`
+Branch: `main`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -38,9 +38,9 @@ PR #21 — historical XAUUSD ingestion — integrated into `main` at merge commi
 
 PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. Empty provider results are a true no-op and do not create storage. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
-The next single Phase 2 task is **deterministic historical replay infrastructure** over the validated append-only candle contract. The replay layer is intentionally transport-free and evidence-only.
+PR #22 — deterministic historical replay — integrated into `main` at merge commit `885e51948ea8377d7896913a2519da7fc5e45ebe` after exact-head CI run #213 passed. The replay layer is transport-free and evidence-only over the validated append-only candle contract.
 
-This branch adds `market/replay.py`: it validates the complete persisted candle dataset before invoking any callback, requires strict chronological ordering and unique timestamps, and replays candles exactly once with deterministic sequence numbers. Malformed, duplicate or out-of-order history fails before callbacks receive any candle.
+PR #22 adds `market/replay.py`: it validates the complete persisted candle dataset before invoking any callback, requires strict chronological ordering and unique timestamps, and replays candles exactly once with deterministic zero-based sequence numbers. Malformed, duplicate or out-of-order history fails before callbacks receive any candle. Replay does not invoke Agent04/05/06, perform networking, write current state or create execution authority.
 
 ## Contract snapshot
 
@@ -93,7 +93,8 @@ Replay contract:
 - `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
 - Deterministic V1 and all previously merged Phase 2 milestones through PR #21 have recorded clean CI evidence in the prior project history.
 - PR #21 final exact-head CI run #206: **SUCCESS** and PR #21 merged after clean CI, mergeability and zero unresolved review threads.
-- Replay tests are now deterministic and cover chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation. CI evidence for this branch is pending PR execution.
+- PR #22 exact-head CI run #213: **SUCCESS** with deterministic replay tests covering chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation.
+- PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
 
 ## Remaining risks / technical debt
 
@@ -109,9 +110,7 @@ Replay contract:
 
 ## Active Phase 2 loop
 
-1. Validate the historical replay branch on exact HEAD; critique any CI failures and fix rather than bypassing them.
-2. Integrate replay only after clean exact-HEAD CI, mergeability and review-thread evidence.
-3. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
-4. Add deterministic feature extraction as versioned evidence transforms over validated historical candles.
-5. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-6. Harden historical indexing only when evidence volume justifies it.
+1. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
+2. Add deterministic feature extraction as versioned evidence transforms over validated historical candles.
+3. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+4. Harden historical indexing only when evidence volume justifies it.
