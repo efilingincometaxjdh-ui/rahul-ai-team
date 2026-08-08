@@ -38,7 +38,9 @@ The market-data provider work is now isolated on `phase2/market-provider-downloa
 
 PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
-Exact-head CI for the initial PR #21 implementation failed with three deterministic test errors because `download_timeframe()` received string `history_dir` values while using the `/` operator directly. The implementation has been corrected to normalize caller-supplied paths with `Path(...)`. The corrected exact-head CI is now pending; test success must not be claimed until GitHub Actions provides evidence.
+Exact-head CI for the initial PR #21 implementation failed with three deterministic test errors because `download_timeframe()` received string `history_dir` values while using the `/` operator directly. That path handling was corrected with `Path(...)` normalization.
+
+The next exact-head CI run exposed one remaining deterministic downloader contract failure: an empty provider response created an empty JSONL file. The downloader has now been corrected so empty normalized candle input is a true no-op and does not create storage. Corrected exact-head CI is pending; test success must not be claimed until GitHub Actions provides evidence.
 
 ## Contract snapshot
 
@@ -76,14 +78,16 @@ Historical market-data ingestion:
 - canonical candles require timezone-aware ISO-8601 `datetime` plus finite positive OHLC values with OHLC consistency;
 - historical persistence is append-only JSONL and keyed idempotently by candle timestamp;
 - existing malformed or duplicate persisted history fails closed before any append;
+- empty provider results are a true no-op and do not create empty history files;
 - ingestion is evidence-only and never writes current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
 ## CI / test evidence
 
 - `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
 - Deterministic V1 and all previously merged Phase 2 milestones through PR #20 have recorded clean CI evidence in the prior project history.
-- PR #21 initial exact-head CI (run #198) failed only in three downloader tests due to the string-path bug documented above; all other 102 tests passed.
-- Corrected PR #21 exact-head CI is pending; do not claim test success until GitHub Actions provides evidence.
+- PR #21 initial exact-head CI (run #198) failed in downloader tests due to the string-path bug; that was corrected.
+- Corrected PR #21 merge CI (run #202) reached 105 tests and failed only `test_empty_values_no_write`; the failure was diagnosed and corrected by making empty input a true no-op.
+- A new exact-head CI result is pending; do not claim test success until GitHub Actions provides evidence.
 
 ## Remaining risks / technical debt
 
