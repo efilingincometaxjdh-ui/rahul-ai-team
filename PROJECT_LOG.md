@@ -48,6 +48,8 @@ PR #23 — versioned deterministic feature extraction — integrated into `main`
 
 **2026-08-08 scheduler milestone:** Implemented a deterministic, transport-free 15-minute scheduling boundary in `history/scheduler.py` with UTC quarter-hour slot normalization, idempotent slot-due detection, minimum-horizon due checks for +15m/+1h/+4h, and next-slot calculation. Added deterministic tests covering timezone normalization, slot boundaries, due horizons, next-slot behavior and fail-closed rejection of naive timestamps. This work does not perform scheduling, networking, persistence, permission evaluation, alert generation or execution; it is the timing contract only.
 
+**2026-08-08 scheduler integration:** PR #25 merged into `main` at commit `411eafa472f414de571c5faf48d590aed50f28b4` after exact-head CI run #230 passed. The deterministic scheduler boundary is now integrated; no lateness tolerance or live scheduler/reference-feed behavior has been inferred from CI.
+
 ## Contract snapshot
 
 Agent 02 → Agent 04:
@@ -116,7 +118,7 @@ Observation/outcome scheduler boundary:
 - PR #22 exact-head CI run #213: **SUCCESS** with deterministic replay tests covering chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation.
 - PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
 - PR #23 exact-head CI run #221: **SUCCESS** and PR #23 merged after clean exact-head CI, mergeability and zero unresolved review threads.
-- The current scheduler branch has not yet produced CI evidence; mergeability and test success are intentionally not claimed until the exact head is exercised by GitHub Actions.
+- PR #25 exact-head CI run #230: **SUCCESS** and PR #25 merged after clean exact-head CI, mergeability and zero unresolved review threads.
 
 ## Remaining risks / technical debt
 
@@ -133,7 +135,8 @@ Observation/outcome scheduler boundary:
 ## Active Phase 2 loop
 
 1. **Cadence decision complete:** observations are intended to be collected every 15 minutes; this is sufficient to service the existing +15m, +1h and +4h outcome horizons. No lateness tolerance is assumed.
-2. **Current task complete in implementation:** deterministic 15-minute observation/outcome scheduler boundary is implemented and covered by tests; pending exact-head CI observation before integration.
-3. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
-4. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-5. Harden historical indexing only when evidence volume justifies it.
+2. **Scheduler boundary complete:** deterministic 15-minute observation/outcome timing helpers are integrated and covered by exact-head CI run #230.
+3. **Next highest-priority task:** obtain representative scheduler/reference-feed timing evidence before deriving or enforcing any outcome lateness tolerance.
+4. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
+5. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+6. Harden historical indexing only when evidence volume justifies it.
