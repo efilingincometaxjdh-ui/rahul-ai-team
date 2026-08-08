@@ -120,6 +120,7 @@ Feature extraction contract:
 
 ## Active Phase 2 loop
 
-1. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
-2. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-3. Harden historical indexing only when evidence volume justifies it.
+1. **BLOCKED — collection cadence decision:** outcome lateness tolerance cannot be defined responsibly until the observation/outcome collection cadence is established. GitHub Issue #24 tracks the required decision and keeps the work evidence-only.
+2. Once cadence is established, implement and deterministically test the evidence-supported outcome lateness tolerance.
+3. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+4. Harden historical indexing only when evidence volume justifies it.
