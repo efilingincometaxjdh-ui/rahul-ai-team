@@ -44,6 +44,8 @@ PR #22 adds `market/replay.py`: it validates the complete persisted candle datas
 
 PR #23 — versioned deterministic feature extraction — integrated into `main` at merge commit `1e18dc7199c2ae14d70a6d2024374adff5ab58ed` after exact-head CI run #221 passed. The transform consumes validated chronological historical candles, reuses Agent02's existing indicator implementations, emits per-candle evidence records with explicit schema/transform versions and warm-up readiness, and has deterministic tests for reproducibility and fail-closed input validation.
 
+**2026-08-08 cadence decision:** Phase 2 observation snapshots are to be collected on a **15-minute cadence**, because 15m is the shortest existing outcome horizon and the Phase 2 plan requires outcomes at +15m, +1h and +4h. A single 15-minute scheduler cadence can therefore create observations and service all three due horizons without introducing a faster-than-required collection loop. This decision defines collection frequency only; it does **not** define an outcome lateness tolerance. Lateness tolerance remains evidence-dependent and will be derived from measured scheduler/reference-feed behavior rather than assumed.
+
 ## Contract snapshot
 
 Agent 02 → Agent 04:
@@ -115,12 +117,13 @@ Feature extraction contract:
 5. Historical JSONL duplicate checks still scan existing records; indexing should be hardened only when evidence volume justifies it.
 6. Twelve Data network collection is isolated behind `TwelveDataProvider`; live collection requires credentialed runtime validation and must remain outside deterministic tests.
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
-8. Observation/outcome collection cadence is not yet scheduled.
+8. **Observation/outcome collection cadence is now defined as 15 minutes; implementation and empirical lateness measurement remain unfinished.**
 9. Coverage analytics currently reports evidence completeness only; directional/performance statistics require a trustworthy observation-time reference-price contract.
 
 ## Active Phase 2 loop
 
-1. **BLOCKED — collection cadence decision:** outcome lateness tolerance cannot be defined responsibly until the observation/outcome collection cadence is established. GitHub Issue #24 tracks the required decision and keeps the work evidence-only.
-2. Once cadence is established, implement and deterministically test the evidence-supported outcome lateness tolerance.
-3. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-4. Harden historical indexing only when evidence volume justifies it.
+1. **Cadence decision complete:** observations are intended to be collected every 15 minutes; this is sufficient to service the existing +15m, +1h and +4h outcome horizons. No lateness tolerance is assumed.
+2. **Next highest-priority task:** implement and deterministically test the evidence-supported 15-minute observation/outcome collection scheduler boundary, while keeping transport-free collection functions and all execution safety invariants unchanged.
+3. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
+4. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+5. Harden historical indexing only when evidence volume justifies it.
