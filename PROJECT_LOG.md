@@ -42,7 +42,7 @@ PR #22 — deterministic historical replay — integrated into `main` at merge c
 
 PR #22 adds `market/replay.py`: it validates the complete persisted candle dataset before invoking any callback, requires strict chronological ordering and unique timestamps, and replays candles exactly once with deterministic zero-based sequence numbers. Malformed, duplicate or out-of-order history fails before callbacks receive any candle. Replay does not invoke Agent04/05/06, perform networking, write current state or create execution authority.
 
-PR #23 — versioned deterministic feature extraction — opened on 2026-08-08 as the next single Phase 2 task. The transform consumes validated chronological historical candles, reuses Agent02's existing indicator implementations, emits per-candle evidence records with explicit schema/transform versions and warm-up readiness, and has deterministic tests for reproducibility and fail-closed input validation. Exact-head CI is pending; the PR is not merged.
+PR #23 — versioned deterministic feature extraction — integrated into `main` at merge commit `1e18dc7199c2ae14d70a6d2024374adff5ab58ed` after exact-head CI run #221 passed. The transform consumes validated chronological historical candles, reuses Agent02's existing indicator implementations, emits per-candle evidence records with explicit schema/transform versions and warm-up readiness, and has deterministic tests for reproducibility and fail-closed input validation.
 
 ## Contract snapshot
 
@@ -104,7 +104,7 @@ Feature extraction contract:
 - PR #21 final exact-head CI run #206: **SUCCESS** and PR #21 merged after clean CI, mergeability and zero unresolved review threads.
 - PR #22 exact-head CI run #213: **SUCCESS** with deterministic replay tests covering chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation.
 - PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
-- PR #23 exact-head CI is pending; no success is claimed until GitHub Actions reports it.
+- PR #23 exact-head CI run #221: **SUCCESS** and PR #23 merged after clean exact-head CI, mergeability and zero unresolved review threads.
 
 ## Remaining risks / technical debt
 
@@ -121,6 +121,5 @@ Feature extraction contract:
 ## Active Phase 2 loop
 
 1. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
-2. Add deterministic feature extraction as versioned evidence transforms over validated historical candles.
-3. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-4. Harden historical indexing only when evidence volume justifies it.
+2. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+3. Harden historical indexing only when evidence volume justifies it.
