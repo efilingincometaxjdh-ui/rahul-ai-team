@@ -15,7 +15,7 @@ import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Union
 
 from market.provider import IMarketDataProvider, TwelveDataProvider
 from agent02 import TIMEFRAMES
@@ -46,6 +46,7 @@ def append_candles_jsonl(filepath: Path, candles: List[Dict]) -> int:
 
     Returns number of appended candles.
     """
+    filepath = Path(filepath)
     _ensure_dir(filepath.parent)
     existing = set()
     if filepath.exists():
@@ -83,7 +84,12 @@ def append_candles_jsonl(filepath: Path, candles: List[Dict]) -> int:
     return appended
 
 
-def download_timeframe(provider: Optional[IMarketDataProvider], label: str, interval: str, history_dir: Optional[Path] = None) -> int:
+def download_timeframe(
+    provider: Optional[IMarketDataProvider],
+    label: str,
+    interval: str,
+    history_dir: Optional[Union[Path, str]] = None,
+) -> int:
     """Download candles for a single timeframe and append to JSONL.
 
     Returns number of appended candles.
@@ -117,13 +123,13 @@ def download_timeframe(provider: Optional[IMarketDataProvider], label: str, inte
             "close": close_p,
         })
 
-    history_dir = history_dir or HISTORY_DIR
+    history_dir = Path(history_dir) if history_dir is not None else HISTORY_DIR
     filepath = history_dir / f"{label}.jsonl"
     appended = append_candles_jsonl(filepath, normalized)
     return appended
 
 
-def download_all(provider: Optional[IMarketDataProvider] = None, history_dir: Optional[Path] = None) -> Dict[str, int]:
+def download_all(provider: Optional[IMarketDataProvider] = None, history_dir: Optional[Union[Path, str]] = None) -> Dict[str, int]:
     """Download all configured timeframes and append to per-timeframe JSONL.
 
     Returns a dict mapping timeframe label -> appended count.
