@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
 Last audited: 2026-08-08
-Branch: `phase2/market-provider-downloader`
+Branch: `main`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -34,13 +34,9 @@ Agent 05 remains the final deterministic permission authority and fails closed o
 
 PR #20 merged on 2026-08-01, integrating deterministic per-horizon evidence-coverage missing counts and EMPTY/PARTIAL/COMPLETE status while remaining read-only and fail-closed.
 
-The market-data provider work is now isolated on `phase2/market-provider-downloader`. Existing Agent02 provider transport has been refactored behind `IMarketDataProvider` / `TwelveDataProvider`, with deterministic provider tests. PR #21 is the active single Phase 2 task: append-only historical XAUUSD candle ingestion.
+PR #21 — historical XAUUSD ingestion — has now been integrated into `main` at merge commit `66f84839c7d31a50a51ae51c29436675caf617db` after corrected exact-head CI passed (Tests run #206). The implementation reuses the existing Agent02 `IMarketDataProvider` / `TwelveDataProvider` transport rather than duplicating provider integration.
 
-PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
-
-Exact-head CI for the initial PR #21 implementation failed with three deterministic test errors because `download_timeframe()` received string `history_dir` values while using the `/` operator directly. That path handling was corrected with `Path(...)` normalization.
-
-The next exact-head CI run exposed one remaining deterministic downloader contract failure: an empty provider response created an empty JSONL file. The downloader has now been corrected so empty normalized candle input is a true no-op and does not create storage. Corrected exact-head CI is pending; test success must not be claimed until GitHub Actions provides evidence.
+PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. Empty provider results are a true no-op and do not create storage. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
 ## Contract snapshot
 
@@ -85,9 +81,10 @@ Historical market-data ingestion:
 
 - `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
 - Deterministic V1 and all previously merged Phase 2 milestones through PR #20 have recorded clean CI evidence in the prior project history.
-- PR #21 initial exact-head CI (run #198) failed in downloader tests due to the string-path bug; that was corrected.
-- Corrected PR #21 merge CI (run #202) reached 105 tests and failed only `test_empty_values_no_write`; the failure was diagnosed and corrected by making empty input a true no-op.
-- A new exact-head CI result is pending; do not claim test success until GitHub Actions provides evidence.
+- PR #21 initial exact-head CI (run #198) failed in downloader tests due to string-path handling; corrected with `Path(...)` normalization.
+- Corrected PR #21 merge CI (run #202) reached 105 tests and failed only `test_empty_values_no_write`; the downloader was corrected so empty input is a true no-op.
+- Final PR #21 exact-head CI run #206: **SUCCESS**.
+- PR #21 merged only after clean CI, mergeability and zero unresolved review threads.
 
 ## Remaining risks / technical debt
 
@@ -103,8 +100,8 @@ Historical market-data ingestion:
 
 ## Active Phase 2 loop
 
-1. Validate PR #21 on its corrected exact HEAD; critique any CI failures and fix rather than bypassing them.
-2. Integrate PR #21 only after clean exact-HEAD CI, mergeability and review-thread evidence.
-3. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
-4. Add directional/performance analytics only after a trustworthy observation-time reference-price contract exists; analytics failures must never increase authority.
-5. Harden historical indexing only when evidence volume justifies it.
+1. Define evidence-supported outcome lateness tolerance only once collection cadence is known.
+2. Add directional/performance analytics only after a trustworthy observation-time reference-price contract exists; analytics failures must never increase authority.
+3. Harden historical indexing only when evidence volume justifies it.
+4. Consider replay infrastructure only after the persisted historical candle contract is exercised against a sufficiently representative dataset; replay remains evidence-only and must not invoke Agent05/06 execution authority.
+5. Add feature extraction only as deterministic, versioned evidence transforms over validated historical candles; feature failures must fail closed for analytics without increasing trading authority.
