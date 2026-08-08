@@ -50,6 +50,10 @@ PR #23 — versioned deterministic feature extraction — integrated into `main`
 
 **2026-08-08 scheduler integration:** PR #25 merged into `main` at commit `411eafa472f414de571c5faf48d590aed50f28b4` after exact-head CI run #230 passed. The deterministic scheduler boundary is now integrated; no lateness tolerance or live scheduler/reference-feed behavior has been inferred from CI.
 
+**2026-08-08 timing-evidence audit:** The next Phase 2 task is currently blocked on representative live scheduler/reference-feed timing evidence. The Agent 02 scheduled workflow is configured for weekdays every 4 hours (`17 */4 * * 1-5`), not the Phase 2 15-minute observation cadence. More importantly, the latest scheduled Agent 02 run (#51, started 2026-08-07T20:58:42Z) failed during runtime collection because `TwelveDataProvider` reports that its network client is not implemented in the current shim. Therefore the repository currently has no trustworthy live timing samples from which to derive an outcome lateness tolerance. Synthetic timestamps remain test fixtures only and are not operational evidence.
+
+**2026-08-08 blocker:** Opened Issue #26 to record the missing runtime reference-collection path and required unblock. The preferred resolution is to complete the existing provider runtime without duplicating Twelve Data transport, or explicitly approve a separate zero-cost XAUUSD SPOT reference feed for timing evidence. No execution authority is required for the unblock.
+
 ## Contract snapshot
 
 Agent 02 → Agent 04:
@@ -119,6 +123,7 @@ Observation/outcome scheduler boundary:
 - PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
 - PR #23 exact-head CI run #221: **SUCCESS** and PR #23 merged after clean exact-head CI, mergeability and zero unresolved review threads.
 - PR #25 exact-head CI run #230: **SUCCESS** and PR #25 merged after clean exact-head CI, mergeability and zero unresolved review threads.
+- Latest scheduled Agent 02 runtime evidence: workflow run #51 failed at runtime collection because the current `TwelveDataProvider` shim has no network client; this is a live collection blocker, not a deterministic test failure.
 
 ## Remaining risks / technical debt
 
@@ -131,12 +136,13 @@ Observation/outcome scheduler boundary:
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
 8. Observation/outcome collection cadence is now defined as 15 minutes; the deterministic timing boundary is implemented, while real scheduler/reference-feed lateness measurement remains unfinished.
 9. Coverage analytics currently reports evidence completeness only; directional/performance statistics require a trustworthy observation-time reference-price contract exercised against representative evidence.
+10. Representative timing evidence is currently blocked because the scheduled Agent 02 runtime cannot perform network collection; do not derive lateness tolerance from synthetic fixtures or CI timing.
 
 ## Active Phase 2 loop
 
 1. **Cadence decision complete:** observations are intended to be collected every 15 minutes; this is sufficient to service the existing +15m, +1h and +4h outcome horizons. No lateness tolerance is assumed.
 2. **Scheduler boundary complete:** deterministic 15-minute observation/outcome timing helpers are integrated and covered by exact-head CI run #230.
-3. **Next highest-priority task:** obtain representative scheduler/reference-feed timing evidence before deriving or enforcing any outcome lateness tolerance.
+3. **Current blocker:** obtain representative scheduler/reference-feed timing evidence; Issue #26 tracks the missing runtime collection path.
 4. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
 5. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
 6. Harden historical indexing only when evidence volume justifies it.
