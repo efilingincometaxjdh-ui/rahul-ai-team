@@ -19,11 +19,18 @@ Agent 01 is intentionally isolated from V1 because its LLM macro analysis overla
 
 ## Agent 02 — XAUUSD Technical Intelligence
 
-Requests M5, M15, H1 and H4 candles from Twelve Data and calculates EMA20, EMA50, RSI14, ATR14, ADX14 and market structure. It writes normalized state to `data/current/agent02.json`.
+Requests M5, M15, H1 and H4 candles from the **cTrader Open API** and calculates EMA20, EMA50, RSI14, ATR14, ADX14 and market structure. It writes normalized state to `data/current/agent02.json`.
 
 Health values are `SUCCESS`, `DEGRADED`, or `FAILED`. Agent 04 accepts only structurally usable technical timeframes and requires Agent 02 state to be no more than 20 minutes old.
 
-Configuration: `TWELVE_DATA_API_KEY` must be supplied as an environment variable / GitHub Actions secret. Never commit credentials.
+Configuration requires the following environment variables / GitHub Actions secrets:
+
+- `CTRADER_CLIENT_ID`
+- `CTRADER_CLIENT_SECRET`
+- `CTRADER_ACCESS_TOKEN`
+- `CTRADER_ACCOUNT_ID`
+
+Optional runtime variables are `CTRADER_ENVIRONMENT=demo|live` and `CTRADER_SYMBOL` (default `XAUUSD`). Credentials are never committed. Agent 02 uses cTrader Open API for **market data only**; no order, position, or execution operation is implemented here.
 
 ## Agent 03 — XAUUSD Macro/News Intelligence
 
@@ -60,6 +67,7 @@ Freshness is a safety contract, not presentation metadata. Stale or invalid time
 ## Run locally
 
 ```bash
+pip install -r requirements.txt
 python agent02.py
 python agent03.py
 python agent04.py
@@ -67,7 +75,7 @@ python agent05.py
 python agent06.py
 ```
 
-Agent 02 requires its API key. Agent 03 requires network access to its official RSS sources. Agents 04–06 consume normalized local state.
+Agent 02 requires cTrader Open API credentials and a cTrader account access token. Agent 03 requires network access to its official RSS sources. Agents 04–06 consume normalized local state.
 
 ## Tests
 
@@ -79,6 +87,6 @@ The `Tests` GitHub Actions workflow runs on pushes and pull requests. Tests cove
 
 ## Automation and safety
 
-Existing intelligence workflows support scheduled/manual collection. Rapidly changing generated market state should be inspected as workflow output/artifacts rather than treated as source code.
+Agent 02 is scheduled every 15 minutes on weekdays to match the Phase 2 observation cadence. Rapidly changing generated market state should be inspected as workflow output/artifacts rather than treated as source code.
 
-No broker/execution adapter belongs in deterministic V1. The roadmap after V1 stability is automation → historical state/outcome collection → architecture hardening → validated integrations → ML-assisted intelligence/feedback → V2. ML should augment rather than blindly replace deterministic safety gates.
+The cTrader integration in this repository is **read-only market-data infrastructure**. No broker execution adapter belongs in deterministic V1. The roadmap after V1 stability is automation → historical state/outcome collection → architecture hardening → validated integrations → ML-assisted intelligence/feedback → V2. ML should augment rather than blindly replace deterministic safety gates.

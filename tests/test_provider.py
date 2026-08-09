@@ -1,7 +1,8 @@
+import os
 import unittest
 from datetime import datetime, timezone, timedelta
 
-from market.provider import IMarketDataProvider, TwelveDataProvider
+from market.provider import CTraderOpenAPIProvider, IMarketDataProvider
 from agent02 import collect_market_data, build_market_state
 
 
@@ -27,7 +28,6 @@ class FakeProvider(IMarketDataProvider):
         return candles
 
     def fetch_candles(self, label: str, interval: str):
-        # Return deterministic data per label
         if label == "M5":
             return self._make_candles(50, interval_minutes=5)
         if label == "M15":
@@ -43,20 +43,45 @@ class ProviderIntegrationTests(unittest.TestCase):
     def test_collect_with_fake_provider(self):
         provider = FakeProvider()
         data = collect_market_data(provider=provider)
-        # Ensure provider returned candles for each timeframe
         self.assertIn("M5", data)
         self.assertIn("H4", data)
-        # Build market state from the data
         state, status, errors, metadata = build_market_state(data)
         self.assertIn("M5", state)
-        # Indicators should exist
         self.assertIn("ema20", state["M5"])
         self.assertIn("rsi", state["M5"])
         self.assertEqual(metadata["symbol"], "XAU/USD")
 
-    def test_twelvedata_provider_missing_key_raises(self):
-        with self.assertRaises(RuntimeError):
-            TwelveDataProvider().fetch_candles("M5", "5min")
+    def test_ctrader_provider_requires_credentials(self):
+        env_names = [
+            "CTRADER_CLIENT_ID",
+            "CTRADER_CLIENT_SECRET",
+            "CTRADER_ACCESS_TOKEN",
+            "CTRADER_ACCOUNT_ID",
+        ]
+        saved = {name: os.environ.pop(name, None) for name in env_names}
+        try:
+            with self.assertRaisesRegex(RuntimeError, "CTRADER_CLIENT_ID missing"):
+                CTraderOpenAPIProvider().fetch_candles("M5", "5min")
+        finally:
+            for name, value in saved.items():
+                if value is not None:
+                    os.environ[name] = value
+
+    def test_ctrader_interval_mapping(self):
+        self.assertEqual(CTraderOpenAPIProvider._period("5min"), "M5")
+        self.assertEqual(CTraderOpenAPIProvider._period("15min"), "M15")
+        self.assertEqual(CTraderOpenAPIProvider._period("1h"), "H1")
+        self.assertEqual(CTraderOpenAPIProvider._period("4h"), "H4")
+
+    def test_ctrader_symbol_normalization(self):
+        self.assertEqual(
+            CTraderOpenAPIProvider._normalise_symbol("XAU/USD"),
+            "XAUUSD",
+        )
+        self.assertEqual(
+            CTraderOpenAPIProvider._normalise_symbol("xauusd"),
+            "XAUUSD",
+        )
 
 
 if __name__ == "__main__":
