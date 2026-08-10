@@ -17,7 +17,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, List, Optional, Union
 
-from market.provider import IMarketDataProvider, TwelveDataProvider
+from market.provider import IMarketDataProvider
 from agent02 import TIMEFRAMES
 
 
@@ -99,7 +99,7 @@ def download_timeframe(
     Returns number of appended candles.
     """
     if provider is None:
-        provider = TwelveDataProvider()
+        raise ValueError("provider is required; inject a configured market-data provider")
 
     candles = provider.fetch_candles(label, interval)
     # Normalize datetimes to UTC ISO
@@ -138,6 +138,9 @@ def download_all(provider: Optional[IMarketDataProvider] = None, history_dir: Op
 
     Returns a dict mapping timeframe label -> appended count.
     """
+    if provider is None:
+        raise ValueError("provider is required; inject a configured market-data provider")
+
     results = {}
     for label, interval in TIMEFRAMES.items():
         try:
