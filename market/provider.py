@@ -27,9 +27,10 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
       CTRADER_CLIENT_ID
       CTRADER_CLIENT_SECRET
       CTRADER_ACCESS_TOKEN
-      CTRADER_ACCOUNT_ID
 
     Optional:
+      CTRADER_ACCOUNT_ID  Explicit cTrader account ID. If omitted, the first
+                          account granted to the access token is selected.
       CTRADER_ENVIRONMENT=demo|live (default: demo)
       CTRADER_SYMBOL=XAUUSD (broker-specific symbol name is resolved
       case-insensitively with '/' removed)
@@ -95,17 +96,25 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
         return self.fetch_many({label: interval}).get(label, [])
 
     def fetch_many(self, timeframes: Dict[str, str]) -> Dict[str, List[Dict]]:
-        """Fetch all requested timeframes over one cTrader connection."""
+        """Fetch all requested timeframes over one authenticated cTrader connection.
+
+        Authentication follows Spotware's required sequence:
+        application auth -> account list by access token -> account auth.
+        If CTRADER_ACCOUNT_ID is supplied, that account must be among the
+        accounts granted to the access token; otherwise the first granted
+        account is selected.
+        """
         client_id = self._require(self.client_id, "CTRADER_CLIENT_ID")
         client_secret = self._require(self.client_secret, "CTRADER_CLIENT_SECRET")
         access_token = self._require(self.access_token, "CTRADER_ACCESS_TOKEN")
-        account_id = int(self._require(self.account_id, "CTRADER_ACCOUNT_ID"))
+        requested_account_id = int(self.account_id) if self.account_id else None
 
         try:
             from ctrader_open_api import Client, EndPoints, TcpProtocol
             from ctrader_open_api.messages.OpenApiMessages_pb2 import (
                 ProtoOAAccountAuthReq,
                 ProtoOAApplicationAuthReq,
+                ProtoOAGetAccountListByAccessTokenReq,
                 ProtoOAGetTrendbarsReq,
                 ProtoOASymbolByIdReq,
                 ProtoOASymbolsListReq,
@@ -143,17 +152,45 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
             failure.append(str(error))
             stop()
 
-        def send_account_auth(_response):
-            request = ProtoOAAccountAuthReq()
-            request.ctidTraderAccountId = account_id
-            request.accessToken = access_token
-            client.send(request).addErrback(fail)
-
         def request_symbols(_response):
             request = ProtoOASymbolsListReq()
-            request.ctidTraderAccountId = account_id
+            request.ctidTraderAccountId = int(self._active_account_id)
             request.includeArchivedSymbols = False
             client.send(request).addCallbacks(on_symbols, fail)
+
+        def send_account_auth(_response):
+            request = ProtoOAAccountAuthReq()
+            request.ctidTraderAccountId = int(self._active_account_id)
+            request.accessToken = access_token
+            client.send(request).addCallbacks(request_symbols, fail)
+
+        def on_account_list(response):
+            accounts = list(response.ctidTraderAccount)
+            if not accounts:
+                fail("cTrader access token has no granted trading accounts")
+                return
+
+            if requested_account_id is None:
+                self._active_account_id = int(accounts[0].ctidTraderAccountId)
+            else:
+                matches = [
+                    account
+                    for account in accounts
+                    if int(account.ctidTraderAccountId) == requested_account_id
+                ]
+                if not matches:
+                    fail(
+                        f"CTRADER_ACCOUNT_ID {requested_account_id} is not granted to the access token"
+                    )
+                    return
+                self._active_account_id = requested_account_id
+
+            send_account_auth(response)
+
+        def on_application_auth(_response):
+            request = ProtoOAGetAccountListByAccessTokenReq()
+            request.accessToken = access_token
+            client.send(request).addCallbacks(on_account_list, fail)
 
         def on_symbols(response):
             wanted = self._normalise_symbol(self.symbol_name)
@@ -166,7 +203,7 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
                 return
             selected_symbol["id"] = int(matches[0].symbolId)
             request = ProtoOASymbolByIdReq()
-            request.ctidTraderAccountId = account_id
+            request.ctidTraderAccountId = int(self._active_account_id)
             request.symbolId.append(selected_symbol["id"])
             client.send(request).addCallbacks(on_full_symbol, fail)
 
@@ -177,7 +214,7 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
             symbol_digits["digits"] = int(response.symbol[0].digits)
             for label, interval in timeframes.items():
                 request = ProtoOAGetTrendbarsReq()
-                request.ctidTraderAccountId = account_id
+                request.ctidTraderAccountId = int(self._active_account_id)
                 request.symbolId = selected_symbol["id"]
                 request.period = ProtoOATrendbarPeriod.Value(self._period(interval))
                 request.toTimestamp = int(time.time() * 1000)
@@ -200,7 +237,7 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
             request = ProtoOAApplicationAuthReq()
             request.clientId = client_id
             request.clientSecret = client_secret
-            client.send(request).addCallbacks(request_symbols, fail)
+            client.send(request).addCallbacks(on_application_auth, fail)
 
         client.setConnectedCallback(connected)
         client.setDisconnectedCallback(lambda _client, reason: fail(f"cTrader disconnected: {reason}"))
