@@ -3,6 +3,7 @@
 # AGENT 02 — XAUUSD MARKET INTELLIGENCE
 # ============================================================
 
+import os
 from datetime import datetime, timezone
 
 from market.indicators import calculate_indicators
@@ -14,6 +15,33 @@ SYMBOL = "XAU/USD"
 TIMEFRAMES = {"M5": "5min", "M15": "15min", "H1": "1h", "H4": "4h"}
 
 
+def validate_ctrader_runtime():
+    """Fail fast with safe diagnostics before opening a cTrader connection."""
+    required = (
+        "CTRADER_CLIENT_ID",
+        "CTRADER_CLIENT_SECRET",
+        "CTRADER_ACCESS_TOKEN",
+    )
+    missing = [name for name in required if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(
+            "cTrader runtime credentials missing: " + ", ".join(missing)
+        )
+
+    environment = os.environ.get("CTRADER_ENVIRONMENT", "demo").lower()
+    if environment not in {"demo", "live"}:
+        raise RuntimeError("CTRADER_ENVIRONMENT must be 'demo' or 'live'")
+
+    print(
+        "cTrader preflight: "
+        f"environment={environment} "
+        f"symbol={os.environ.get('CTRADER_SYMBOL', 'XAUUSD')} "
+        f"client_id_present={bool(os.environ.get('CTRADER_CLIENT_ID'))} "
+        f"client_secret_present={bool(os.environ.get('CTRADER_CLIENT_SECRET'))} "
+        f"access_token_present={bool(os.environ.get('CTRADER_ACCESS_TOKEN'))}"
+    )
+
+
 def collect_market_data(provider=None):
     """Collect market data for all configured timeframes.
 
@@ -22,6 +50,7 @@ def collect_market_data(provider=None):
     uses one connection for all four timeframes to avoid unnecessary sessions.
     """
     if provider is None:
+        validate_ctrader_runtime()
         provider = CTraderOpenAPIProvider()
 
     if hasattr(provider, "fetch_many"):
@@ -102,7 +131,7 @@ def main():
     except RuntimeError as error:
         write_state(
             agent="Agent02",
-            version="0.5",
+            version="0.6",
             filename="agent02.json",
             data={},
             status="FAILED",
@@ -115,7 +144,7 @@ def main():
     market_state, status, errors, metadata = build_market_state(market_data)
     write_state(
         agent="Agent02",
-        version="0.5",
+        version="0.6",
         filename="agent02.json",
         data=market_state,
         status=status,
