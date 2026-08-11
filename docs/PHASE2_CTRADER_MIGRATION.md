@@ -27,18 +27,18 @@ Optional:
 
 - `CTRADER_ACCOUNT_ID` — if omitted, Agent 02 selects the first account granted to the access token.
 
-Non-secret configuration should use GitHub Actions variables where appropriate:
+Optional repository variables:
 
 - `CTRADER_ENVIRONMENT=demo` (default)
 - `CTRADER_SYMBOL=XAUUSD` (default)
 
-`CTRADER_TOKEN_URL` is not a credential and is not required by the current runtime. The cTrader token endpoint is a fixed API endpoint used when exchanging an authorization code or refreshing a token; the resulting access token is the secret consumed by the market-data connection.
+`CTRADER_TOKEN_URL` is not consumed by the current runtime. cTrader's token endpoint is a fixed API endpoint used to exchange an authorization code or refresh token; the resulting access token is what the Open API connection uses for account authentication. citeturn1search1
 
 ## Runtime scope
 
 The implementation is strictly market-data-only. It does not submit orders, modify positions, or grant trading permissions.
 
-The intended Phase 2 validation sequence is:
+## Validation sequence
 
 `CI -> credentialed demo run -> M5/M15/H1/H4 artifacts -> repeated observation samples -> timing/lateness measurement`
 
