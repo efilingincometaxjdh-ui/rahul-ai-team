@@ -51,7 +51,7 @@ class ProviderIntegrationTests(unittest.TestCase):
         self.assertIn("rsi", state["M5"])
         self.assertEqual(metadata["symbol"], "XAU/USD")
 
-    def test_ctrader_provider_requires_credentials(self):
+    def test_ctrader_provider_requires_application_credentials(self):
         env_names = [
             "CTRADER_CLIENT_ID",
             "CTRADER_CLIENT_SECRET",
@@ -66,6 +66,14 @@ class ProviderIntegrationTests(unittest.TestCase):
             for name, value in saved.items():
                 if value is not None:
                     os.environ[name] = value
+
+    def test_ctrader_account_id_is_optional(self):
+        provider = CTraderOpenAPIProvider(
+            client_id="client",
+            client_secret="secret",
+            access_token="token",
+        )
+        self.assertIsNone(provider.account_id)
 
     def test_ctrader_interval_mapping(self):
         self.assertEqual(CTraderOpenAPIProvider._period("5min"), "M5")
