@@ -1,40 +1,45 @@
-# Phase 2 — cTrader market-data migration
+# Phase 2 cTrader Market-Data Migration
 
-Date: 2026-08-10
+## Source of truth
 
-## Decision
+Agent 02 uses cTrader Open API as the authoritative XAUUSD broker market-data source. Twelve Data is not used by the active runtime.
 
-Agent 02 no longer uses Twelve Data for runtime market data. The runtime provider is now cTrader Open API using Spotware's official `ctrader-open-api` Python SDK.
+Binance remains supplemental crypto telemetry only and must not be substituted for XAUUSD observation evidence.
 
-## Runtime contract
+## Authentication
 
-Required secrets/variables:
+The runtime follows Spotware's OAuth/account authentication flow:
+
+1. cTrader application authentication with `clientId` and `clientSecret`.
+2. Account discovery with the access token.
+3. Account authentication using the selected `ctidTraderAccountId` and access token.
+4. Symbol discovery and historical trendbar requests.
+
+### GitHub Actions secrets
+
+Required:
 
 - `CTRADER_CLIENT_ID`
 - `CTRADER_CLIENT_SECRET`
 - `CTRADER_ACCESS_TOKEN`
-- `CTRADER_ACCOUNT_ID`
 
 Optional:
 
-- `CTRADER_ENVIRONMENT` (`demo` by default; `live` when explicitly configured)
-- `CTRADER_SYMBOL` (`XAUUSD` by default)
+- `CTRADER_ACCOUNT_ID` — if omitted, Agent 02 selects the first account granted to the access token.
 
-The provider resolves the broker-specific symbol ID from the authenticated account, retrieves M5/M15/H1/H4 historical trendbars over one connection, and normalizes cTrader relative prices/timestamps into the existing canonical candle contract.
+Non-secret configuration should use GitHub Actions variables where appropriate:
 
-## Safety boundary
+- `CTRADER_ENVIRONMENT=demo` (default)
+- `CTRADER_SYMBOL=XAUUSD` (default)
 
-This integration is **market-data-only**. It does not submit, modify, close or manage orders or positions. Agent 05 remains the final permission authority and Agent 06 remains read-only with `execution_enabled: false`.
+`CTRADER_TOKEN_URL` is not a credential and is not required by the current runtime. The cTrader token endpoint is a fixed API endpoint used when exchanging an authorization code or refreshing a token; the resulting access token is the secret consumed by the market-data connection.
 
-## Observation cadence
+## Runtime scope
 
-The Agent 02 workflow is aligned to the Phase 2 15-minute weekday observation cadence. The workflow installs the pinned cTrader SDK and reads credentials only from GitHub Actions secrets/variables.
+The implementation is strictly market-data-only. It does not submit orders, modify positions, or grant trading permissions.
 
-## Validation gates
+The intended Phase 2 validation sequence is:
 
-1. Exact-head deterministic CI must pass on the migration branch.
-2. GitHub Actions must have valid cTrader credentials configured.
-3. A credentialed Agent 02 run must produce timestamped XAUUSD M5/M15/H1/H4 state artifacts.
-4. Only after representative runtime timestamps exist should outcome lateness tolerance be derived.
+`CI -> credentialed demo run -> M5/M15/H1/H4 artifacts -> repeated observation samples -> timing/lateness measurement`
 
-Synthetic tests are not treated as live timing evidence.
+Synthetic tests do not count as operational observation evidence.
