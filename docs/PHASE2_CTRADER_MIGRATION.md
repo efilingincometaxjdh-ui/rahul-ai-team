@@ -32,7 +32,7 @@ Optional repository variables:
 - `CTRADER_ENVIRONMENT=demo` (default)
 - `CTRADER_SYMBOL=XAUUSD` (default)
 
-`CTRADER_TOKEN_URL` is not consumed by the current runtime. cTrader's token endpoint is a fixed API endpoint used to exchange an authorization code or refresh token; the resulting access token is what the Open API connection uses for account authentication. citeturn1search1
+`CTRADER_TOKEN_URL` is not consumed by the current runtime. cTrader's token endpoint is a fixed API endpoint used to exchange an authorization code or refresh token; the resulting access token is what the Open API connection uses for account authentication.
 
 ## Runtime scope
 
