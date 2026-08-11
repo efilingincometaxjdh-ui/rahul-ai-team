@@ -8,32 +8,53 @@ from datetime import datetime, timezone
 
 from market.indicators import calculate_indicators
 from market.structure import analyze_structure
-from market.provider import TwelveDataProvider
+from market.provider import CTraderOpenAPIProvider
 from utils.json_writer import write_state
 
 SYMBOL = "XAU/USD"
 TIMEFRAMES = {"M5": "5min", "M15": "15min", "H1": "1h", "H4": "4h"}
 
 
-def fetch_candles(label, interval):
-    """Backward-compatible wrapper around the TwelveDataProvider implementation.
+def validate_ctrader_runtime():
+    """Fail fast with safe diagnostics before opening a cTrader connection."""
+    required = (
+        "CTRADER_CLIENT_ID",
+        "CTRADER_CLIENT_SECRET",
+        "CTRADER_ACCESS_TOKEN",
+    )
+    missing = [name for name in required if not os.environ.get(name)]
+    if missing:
+        raise RuntimeError(
+            "cTrader runtime credentials missing: " + ", ".join(missing)
+        )
 
-    This preserves the original behaviour where a missing TWELVE_DATA_API_KEY
-    raises a RuntimeError. All API logic lives in market.provider.TwelveDataProvider
-    to avoid duplication and to enable dependency injection in tests.
-    """
-    provider = TwelveDataProvider()
-    return provider.fetch_candles(label, interval)
+    environment = os.environ.get("CTRADER_ENVIRONMENT", "demo").lower()
+    if environment not in {"demo", "live"}:
+        raise RuntimeError("CTRADER_ENVIRONMENT must be 'demo' or 'live'")
+
+    print(
+        "cTrader preflight: "
+        f"environment={environment} "
+        f"symbol={os.environ.get('CTRADER_SYMBOL', 'XAUUSD')} "
+        f"client_id_present={bool(os.environ.get('CTRADER_CLIENT_ID'))} "
+        f"client_secret_present={bool(os.environ.get('CTRADER_CLIENT_SECRET'))} "
+        f"access_token_present={bool(os.environ.get('CTRADER_ACCESS_TOKEN'))}"
+    )
 
 
 def collect_market_data(provider=None):
     """Collect market data for all configured timeframes.
 
-    If no provider is supplied, a TwelveDataProvider is constructed, preserving
-    backward-compatible behaviour when the API key is missing (it will raise).
+    cTrader is the only runtime market-data source. Providers used by tests
+    may still implement the same fetch_candles interface; a cTrader provider
+    uses one connection for all four timeframes to avoid unnecessary sessions.
     """
     if provider is None:
-        provider = TwelveDataProvider()
+        validate_ctrader_runtime()
+        provider = CTraderOpenAPIProvider()
+
+    if hasattr(provider, "fetch_many"):
+        return provider.fetch_many(TIMEFRAMES)
 
     market_data = {}
     for label, interval in TIMEFRAMES.items():
@@ -42,7 +63,10 @@ def collect_market_data(provider=None):
         market_data[label] = candles
         if candles:
             latest = candles[-1]
-            print(f"✅ {label}: {len(candles)} candles | Latest close: {latest['close']:.2f} | Time: {latest['datetime']}")
+            print(
+                f"✅ {label}: {len(candles)} candles | Latest close: "
+                f"{latest['close']:.2f} | Time: {latest['datetime']}"
+            )
     return market_data
 
 
@@ -88,6 +112,7 @@ def build_market_state(market_data):
 
     metadata = {
         "symbol": SYMBOL,
+        "provider": "cTrader Open API",
         "requested_timeframes": list(TIMEFRAMES.keys()),
         "available_timeframes": available,
         "missing_timeframes": missing,
@@ -106,12 +131,12 @@ def main():
     except RuntimeError as error:
         write_state(
             agent="Agent02",
-            version="0.4",
+            version="0.6",
             filename="agent02.json",
             data={},
             status="FAILED",
             errors=[str(error)],
-            metadata={"symbol": SYMBOL},
+            metadata={"symbol": SYMBOL, "provider": "cTrader Open API"},
         )
         print(f"❌ {error}")
         raise SystemExit(1)
@@ -119,7 +144,7 @@ def main():
     market_state, status, errors, metadata = build_market_state(market_data)
     write_state(
         agent="Agent02",
-        version="0.4",
+        version="0.6",
         filename="agent02.json",
         data=market_state,
         status=status,

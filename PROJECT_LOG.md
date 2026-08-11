@@ -54,6 +54,10 @@ PR #23 — versioned deterministic feature extraction — integrated into `main`
 
 **2026-08-08 blocker:** Opened Issue #26 to record the missing runtime reference-collection path and required unblock. The preferred resolution is to complete the existing provider runtime without duplicating Twelve Data transport, or explicitly approve a separate zero-cost XAUUSD SPOT reference feed for timing evidence. No execution authority is required for the unblock.
 
+**2026-08-10 cTrader migration:** PR #27 replaces the active Twelve Data runtime with Spotware's cTrader Open API and adds supplemental read-only Binance crypto telemetry. XAUUSD remains cTrader-broker sourced; Binance is not used as an XAUUSD substitute.
+
+**2026-08-10 cTrader auth hardening:** the provider now follows the official cTrader sequence of application auth → account discovery by access token → account auth → symbol discovery/trendbar requests. `CTRADER_ACCOUNT_ID` is optional; when omitted, the first account granted to the access token is selected, and when supplied it must be among the granted accounts. Required runtime secrets are `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, and `CTRADER_ACCESS_TOKEN`.
+
 ## Contract snapshot
 
 Agent 02 → Agent 04:
@@ -86,7 +90,7 @@ Agent 06 → Trader View → historical evidence:
 - analytics and replay are read-only and cannot increase trading authority.
 
 Historical market-data ingestion:
-- uses the existing `IMarketDataProvider` / `TwelveDataProvider` path rather than duplicating transport;
+- uses the provider abstraction and is evidence-only;
 - canonical candles require timezone-aware ISO-8601 `datetime` plus finite positive OHLC values with OHLC consistency;
 - historical persistence is append-only JSONL and keyed idempotently by candle timestamp;
 - existing malformed or duplicate persisted history fails closed before any append;
@@ -123,7 +127,7 @@ Observation/outcome scheduler boundary:
 - PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
 - PR #23 exact-head CI run #221: **SUCCESS** and PR #23 merged after clean exact-head CI, mergeability and zero unresolved review threads.
 - PR #25 exact-head CI run #230: **SUCCESS** and PR #25 merged after clean exact-head CI, mergeability and zero unresolved review threads.
-- Latest scheduled Agent 02 runtime evidence: workflow run #51 failed at runtime collection because the current `TwelveDataProvider` shim has no network client; this is a live collection blocker, not a deterministic test failure.
+- PR #27 deterministic CI previously passed before the cTrader auth-flow hardening; fresh exact-head CI is required after the latest changes.
 
 ## Remaining risks / technical debt
 
@@ -132,17 +136,18 @@ Observation/outcome scheduler boundary:
 3. Agent 01 remains monolithic and credential-dependent but isolated.
 4. Operational orchestration must not accidentally become autonomous execution.
 5. Historical JSONL duplicate checks still scan existing records; indexing should be hardened only when evidence volume justifies it.
-6. Twelve Data network collection is isolated behind `TwelveDataProvider`; live collection requires credentialed runtime validation and must remain outside deterministic tests.
+6. cTrader runtime requires a valid access token and credentialed demo validation; deterministic tests must remain network-free.
 7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
 8. Observation/outcome collection cadence is now defined as 15 minutes; the deterministic timing boundary is implemented, while real scheduler/reference-feed lateness measurement remains unfinished.
 9. Coverage analytics currently reports evidence completeness only; directional/performance statistics require a trustworthy observation-time reference-price contract exercised against representative evidence.
-10. Representative timing evidence is currently blocked because the scheduled Agent 02 runtime cannot perform network collection; do not derive lateness tolerance from synthetic fixtures or CI timing.
+10. Representative timing evidence remains unfinished until the cTrader runtime produces real timestamped observations.
 
 ## Active Phase 2 loop
 
 1. **Cadence decision complete:** observations are intended to be collected every 15 minutes; this is sufficient to service the existing +15m, +1h and +4h outcome horizons. No lateness tolerance is assumed.
 2. **Scheduler boundary complete:** deterministic 15-minute observation/outcome timing helpers are integrated and covered by exact-head CI run #230.
-3. **Current blocker:** obtain representative scheduler/reference-feed timing evidence; Issue #26 tracks the missing runtime collection path.
-4. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
-5. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-6. Harden historical indexing only when evidence volume justifies it.
+3. **Current workstream:** PR #27 cTrader market-data migration and authentication hardening.
+4. **Next gate:** fresh exact-head CI, then credentialed demo Agent 02 runtime producing real M5/M15/H1/H4 XAUUSD observation artifacts.
+5. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
+6. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+7. Harden historical indexing only when evidence volume justifies it.

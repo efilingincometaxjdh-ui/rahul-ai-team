@@ -19,11 +19,13 @@ Agent 01 is intentionally isolated from V1 because its LLM macro analysis overla
 
 ## Agent 02 — XAUUSD Technical Intelligence
 
-Requests M5, M15, H1 and H4 candles from Twelve Data and calculates EMA20, EMA50, RSI14, ATR14, ADX14 and market structure. It writes normalized state to `data/current/agent02.json`.
+Requests M5, M15, H1 and H4 candles from the cTrader Open API and calculates EMA20, EMA50, RSI14, ATR14, ADX14 and market structure. It writes normalized state to `data/current/agent02.json`.
 
 Health values are `SUCCESS`, `DEGRADED`, or `FAILED`. Agent 04 accepts only structurally usable technical timeframes and requires Agent 02 state to be no more than 20 minutes old.
 
-Configuration: `TWELVE_DATA_API_KEY` must be supplied as an environment variable / GitHub Actions secret. Never commit credentials.
+cTrader runtime configuration is supplied through GitHub Actions secrets: `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, and `CTRADER_ACCESS_TOKEN`. `CTRADER_ACCOUNT_ID` is optional; when omitted, the first account granted to the access token is selected. Never commit credentials.
+
+Binance is available only as supplemental public crypto telemetry and is not an XAUUSD evidence source.
 
 ## Agent 03 — XAUUSD Macro/News Intelligence
 
@@ -67,7 +69,7 @@ python agent05.py
 python agent06.py
 ```
 
-Agent 02 requires its API key. Agent 03 requires network access to its official RSS sources. Agents 04–06 consume normalized local state.
+Agent 02 requires cTrader Open API credentials. Agent 03 requires network access to its official RSS sources. Agents 04–06 consume normalized local state.
 
 ## Tests
 
