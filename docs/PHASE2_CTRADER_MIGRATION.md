@@ -40,6 +40,11 @@ The implementation is strictly market-data-only. It does not submit orders, modi
 
 ## Validation sequence
 
-`CI -> credentialed demo run -> M5/M15/H1/H4 artifacts -> repeated observation samples -> timing/lateness measurement`
+1. Exact-head deterministic CI must pass.
+2. Credentialed cTrader **demo** run must authenticate successfully.
+3. Agent 02 must resolve the broker's XAUUSD symbol dynamically.
+4. M5/M15/H1/H4 historical trendbar artifacts must be produced.
+5. Repeated 15-minute observation runs must produce timestamped evidence.
+6. Only representative operational samples may be used to derive timing/lateness tolerance.
 
 Synthetic tests do not count as operational observation evidence.
