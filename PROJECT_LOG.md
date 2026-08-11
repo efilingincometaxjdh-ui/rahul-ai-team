@@ -1,13 +1,153 @@
-# PROJECT LOG
+# Rahul AI Team — Project Log
 
-## 2026-08-10 — cTrader authentication flow hardening
+Last audited: 2026-08-08
+Branch: `main`
+Phase: **Phase 2 — evidence infrastructure**
 
-PR #27 now follows the official cTrader Open API account-authentication sequence: application authentication, account discovery by access token, account authentication, then symbol/trendbar requests.
+This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
 
-`CTRADER_ACCOUNT_ID` is optional. When omitted, the provider selects the first account granted to the access token; when supplied, it must match an account granted to that token.
+## Loop Engineering protocol
 
-The runtime remains read-only and demo-first. No execution operations are implemented.
+**Inspect → Plan → Build → Test → Observe → Critique → Fix → Retest → Integrate → Monitor → Repeat**.
 
-The repository requires `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, and `CTRADER_ACCESS_TOKEN` for credentialed runtime validation. `CTRADER_TOKEN_URL` is configuration metadata rather than a credential and is not consumed by the current runtime.
+Rules:
+- Repository evidence beats assumptions.
+- Deterministic safety gates beat model opinions.
+- Generated state uses the normalized atomic `utils/json_writer.py` envelope.
+- Missing, malformed, failed, stale, future-dated or degraded upstream state reduces authority, never increases it.
+- No autonomous execution/broker integration.
+- Agent 05 fails closed on `NO_TRADE`, invalid input, unknown decision/risk states, invalid confidence, EXTREME risk and stale Agent 04 state.
+- Agent 06 is read-only and always exposes `execution_enabled: false`.
+- Historical/analytics infrastructure is evidence-only and must never increase trading authority.
 
-Next gate: exact-head CI, then credentialed demo execution of Agent 02 to produce real M5/M15/H1/H4 XAUUSD observation artifacts.
+## Architecture
+
+`Agent 02 Technical` + `Agent 03 Macro/News` → **Agent 04 Decision** → **Agent 05 Permission** → **Agent 06 Alert Gateway (read-only)** → **Trader View / historical evidence**.
+
+Agent 01 remains isolated. Keltner Bot 2.0 is a separate next project.
+
+## Safety status
+
+Agent 05 remains the final deterministic permission authority and fails closed on invalid, stale or unsafe Agent 04 state. Agent 06 remains read-only and explicitly exposes `execution_enabled: false`. Historical, replay and market-data work is evidence-only and does not create trading authority.
+
+## Current Phase 2 milestone
+
+PR #20 merged on 2026-08-01, integrating deterministic per-horizon evidence-coverage missing counts and EMPTY/PARTIAL/COMPLETE status while remaining read-only and fail-closed.
+
+PR #21 — historical XAUUSD ingestion — integrated into `main` at merge commit `66f84839c7d31a50a51ae51c29436675caf617db` after corrected exact-head CI passed (Tests run #206). The implementation reuses the existing Agent02 `IMarketDataProvider` / `TwelveDataProvider` transport rather than duplicating provider integration.
+
+PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. Empty provider results are a true no-op and do not create storage. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
+
+PR #22 — deterministic historical replay — integrated into `main` at merge commit `885e51948ea8377d7896913a2519da7fc5e45ebe` after exact-head CI run #213 passed. The replay layer is transport-free and evidence-only over the validated append-only candle contract.
+
+PR #22 adds `market/replay.py`: it validates the complete persisted candle dataset before invoking any callback, requires strict chronological ordering and unique timestamps, and replays candles exactly once with deterministic zero-based sequence numbers. Malformed, duplicate or out-of-order history fails before callbacks receive any candle. Replay does not invoke Agent04/05/06, perform networking, write current state or create execution authority.
+
+PR #23 — versioned deterministic feature extraction — integrated into `main` at merge commit `1e18dc7199c2ae14d70a6d2024374adff5ab58ed` after exact-head CI run #221 passed. The transform consumes validated chronological historical candles, reuses Agent02's existing indicator implementations, emits per-candle evidence records with explicit schema/transform versions and warm-up readiness, and has deterministic tests for reproducibility and fail-closed input validation.
+
+**2026-08-08 cadence decision:** Phase 2 observation snapshots are to be collected on a **15-minute cadence**, because 15m is the shortest existing outcome horizon and the Phase 2 plan requires outcomes at +15m, +1h and +4h. A single 15-minute scheduler cadence can therefore create observations and service all three due horizons without introducing a faster-than-required collection loop. This decision defines collection frequency only; it does **not** define an outcome lateness tolerance. Lateness tolerance remains evidence-dependent and will be derived from measured scheduler/reference-feed behavior rather than assumed.
+
+**2026-08-08 scheduler milestone:** Implemented a deterministic, transport-free 15-minute scheduling boundary in `history/scheduler.py` with UTC quarter-hour slot normalization, idempotent slot-due detection, minimum-horizon due checks for +15m/+1h/+4h, and next-slot calculation. Added deterministic tests covering timezone normalization, slot boundaries, due horizons, next-slot behavior and fail-closed rejection of naive timestamps. This work does not perform scheduling, networking, persistence, permission evaluation, alert generation or execution; it is the timing contract only.
+
+**2026-08-08 scheduler integration:** PR #25 merged into `main` at commit `411eafa472f414de571c5faf48d590aed50f28b4` after exact-head CI run #230 passed. The deterministic scheduler boundary is now integrated; no lateness tolerance or live scheduler/reference-feed behavior has been inferred from CI.
+
+**2026-08-08 timing-evidence audit:** The next Phase 2 task is currently blocked on representative live scheduler/reference-feed timing evidence. The Agent 02 scheduled workflow is configured for weekdays every 4 hours (`17 */4 * * 1-5`), not the Phase 2 15-minute observation cadence. More importantly, the latest scheduled Agent 02 run (#51, started 2026-08-07T20:58:42Z) failed during runtime collection because `TwelveDataProvider` reports that its network client is not implemented in the current shim. Therefore the repository currently has no trustworthy live timing samples from which to derive an outcome lateness tolerance. Synthetic timestamps remain test fixtures only and are not operational evidence.
+
+**2026-08-08 blocker:** Opened Issue #26 to record the missing runtime reference-collection path and required unblock. The preferred resolution is to complete the existing provider runtime without duplicating Twelve Data transport, or explicitly approve a separate zero-cost XAUUSD SPOT reference feed for timing evidence. No execution authority is required for the unblock.
+
+**2026-08-10 cTrader migration:** PR #27 replaces the active Twelve Data runtime with Spotware's cTrader Open API and adds supplemental read-only Binance crypto telemetry. XAUUSD remains cTrader-broker sourced; Binance is not used as an XAUUSD substitute.
+
+**2026-08-10 cTrader auth hardening:** the provider now follows the official cTrader sequence of application auth → account discovery by access token → account auth → symbol discovery/trendbar requests. `CTRADER_ACCOUNT_ID` is optional; when omitted, the first account granted to the access token is selected, and when supplied it must be among the granted accounts. Required runtime secrets are `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, and `CTRADER_ACCESS_TOKEN`.
+
+## Contract snapshot
+
+Agent 02 → Agent 04:
+- health SUCCESS or DEGRADED;
+- valid `generated_at` ≤20 minutes old;
+- usable timeframe has non-null `ema20`, `ema50`, `rsi`, `adx`, `trend`.
+
+Agent 03 → Agent 04:
+- health SUCCESS or DEGRADED;
+- valid `generated_at` ≤6 hours old;
+- `gold_bias` + `news_risk`;
+- RSS risk LOW/MEDIUM/HIGH only.
+
+Agent 04 → Agent 05:
+- valid normalized decision state ≤15 minutes old;
+- failed/stale/invalid means BLOCK_TRADING downstream;
+- degraded means CAUTION downstream;
+- alignment/conflict metadata is intelligence only and does not increase authority.
+
+Agent 05 → Agent 06:
+- valid normalized permission state ≤15 minutes old;
+- known permissions only: ALLOW_BUYS, ALLOW_SELLS, ALLOW_BOTH, CAUTION, BLOCK_TRADING;
+- invalid/stale/unknown fails to BLOCK_TRADING;
+- degraded authority cannot pass through as ALLOW_*.
+
+Agent 06 → Trader View → historical evidence:
+- Agent 06 remains the permission authority and is informational/read-only;
+- Trader View must explicitly identify `mode: READ_ONLY`, `symbol: XAUUSD`, and `execution_enabled: false` before becoming a prediction snapshot;
+- historical evidence rejects execution-bearing inputs and preserves immutable predictions with separately appended outcomes;
+- analytics and replay are read-only and cannot increase trading authority.
+
+Historical market-data ingestion:
+- uses the provider abstraction and is evidence-only;
+- canonical candles require timezone-aware ISO-8601 `datetime` plus finite positive OHLC values with OHLC consistency;
+- historical persistence is append-only JSONL and keyed idempotently by candle timestamp;
+- existing malformed or duplicate persisted history fails closed before any append;
+- empty provider results are a true no-op and do not create empty history files;
+- ingestion is evidence-only and never writes current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
+
+Replay contract:
+- validates the entire persisted candle file before any callback is invoked;
+- requires unique, strictly increasing normalized timestamps;
+- missing history is an empty replay and does not create storage;
+- replay emits deterministic zero-based sequence numbers and copied candle records;
+- replay performs no networking, scheduling, current-state writes, permission evaluation, alert generation or execution.
+
+Feature extraction contract:
+- consumes only validated, strictly chronological historical candles;
+- reuses Agent02 indicator implementations rather than duplicating technical-indicator formulas;
+- emits one immutable evidence record per candle with `schema_version`, `transform_version`, timestamp, technical features and explicit warm-up `ready` state;
+- duplicate, out-of-order, malformed or non-finite inputs fail closed before feature output is returned;
+- feature extraction performs no networking, scheduling, current-state writes, permission evaluation, alert generation or execution.
+
+Observation/outcome scheduler boundary:
+- UTC-aware timestamps are normalized into 15-minute observation slots;
+- a snapshot is due when no prior observation exists or the current 15-minute slot is newer than the last observed slot;
+- outcome horizons become due only at their minimum elapsed time: +15m, +1h and +4h;
+- the scheduler boundary does not define maximum lateness/tolerance and does not acquire reference prices;
+- scheduler helpers are deterministic, transport-free and evidence-only.
+
+## CI / test evidence
+
+- `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
+- Deterministic V1 and all previously merged Phase 2 milestones through PR #21 have recorded clean CI evidence in the prior project history.
+- PR #21 final exact-head CI run #206: **SUCCESS** and PR #21 merged after clean CI, mergeability and zero unresolved review threads.
+- PR #22 exact-head CI run #213: **SUCCESS** with deterministic replay tests covering chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation.
+- PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
+- PR #23 exact-head CI run #221: **SUCCESS** and PR #23 merged after clean exact-head CI, mergeability and zero unresolved review threads.
+- PR #25 exact-head CI run #230: **SUCCESS** and PR #25 merged after clean exact-head CI, mergeability and zero unresolved review threads.
+- PR #27 deterministic CI previously passed before the cTrader auth-flow hardening; fresh exact-head CI is required after the latest changes.
+
+## Remaining risks / technical debt
+
+1. Agent 03 lacks a validated scheduled-event calendar, so EXTREME event windows remain intentionally unavailable.
+2. Freshness thresholds need later empirical validation against workflow cadence/session behavior.
+3. Agent 01 remains monolithic and credential-dependent but isolated.
+4. Operational orchestration must not accidentally become autonomous execution.
+5. Historical JSONL duplicate checks still scan existing records; indexing should be hardened only when evidence volume justifies it.
+6. cTrader runtime requires a valid access token and credentialed demo validation; deterministic tests must remain network-free.
+7. Outcome timing enforces a minimum horizon but does not impose a maximum lateness/tolerance window; choose that only with collection-cadence evidence.
+8. Observation/outcome collection cadence is now defined as 15 minutes; the deterministic timing boundary is implemented, while real scheduler/reference-feed lateness measurement remains unfinished.
+9. Coverage analytics currently reports evidence completeness only; directional/performance statistics require a trustworthy observation-time reference-price contract exercised against representative evidence.
+10. Representative timing evidence remains unfinished until the cTrader runtime produces real timestamped observations.
+
+## Active Phase 2 loop
+
+1. **Cadence decision complete:** observations are intended to be collected every 15 minutes; this is sufficient to service the existing +15m, +1h and +4h outcome horizons. No lateness tolerance is assumed.
+2. **Scheduler boundary complete:** deterministic 15-minute observation/outcome timing helpers are integrated and covered by exact-head CI run #230.
+3. **Current workstream:** PR #27 cTrader market-data migration and authentication hardening.
+4. **Next gate:** fresh exact-head CI, then credentialed demo Agent 02 runtime producing real M5/M15/H1/H4 XAUUSD observation artifacts.
+5. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
+6. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+7. Harden historical indexing only when evidence volume justifies it.
