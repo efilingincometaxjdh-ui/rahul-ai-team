@@ -3,8 +3,9 @@ name: Agent 02 - XAUUSD Market Intelligence
 on:
   workflow_dispatch:
   schedule:
-    # Weekdays every 4 hours. Keeps API/GitHub usage modest while producing fresh state.
-    - cron: "17 */4 * * 1-5"
+    # Phase 2 observation cadence: 15 minutes. Timing evidence is collected
+    # read-only after Agent02 completes and is uploaded as a per-run artifact.
+    - cron: "*/15 * * * *"
 
 permissions:
   contents: read
@@ -23,16 +24,59 @@ jobs:
         with:
           python-version: "3.11"
 
+      - name: Capture workflow start
+        run: echo "WORKFLOW_STARTED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
       - name: Run Agent 02
         env:
           TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
         run: python agent02.py
 
+      - name: Capture workflow finish
+        if: success()
+        run: echo "WORKFLOW_FINISHED_AT=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_ENV"
+
+      - name: Record timing evidence
+        if: success()
+        env:
+          GITHUB_RUN_ID: ${{ github.run_id }}
+        run: |
+          python - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          from history.timing_evidence import write_timing_record
+
+          state = json.loads(Path("data/current/agent02.json").read_text(encoding="utf-8"))
+          latest_reference_at = state.get("metadata", {}).get("latest_candle_at", {}).get("M5")
+          if not latest_reference_at:
+              raise SystemExit("Agent02 produced no M5 latest reference timestamp")
+
+          record = write_timing_record(
+              "data/evidence/timing_evidence.jsonl",
+              run_id=os.environ["GITHUB_RUN_ID"],
+              workflow_started_at=os.environ["WORKFLOW_STARTED_AT"],
+              workflow_finished_at=os.environ["WORKFLOW_FINISHED_AT"],
+              latest_reference_at=latest_reference_at,
+          )
+          print(json.dumps(record, sort_keys=True))
+          PY
+
       - name: Upload current market state
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: agent02-state
+          name: agent02-state-${{ github.run_id }}
           path: data/current/agent02.json
           if-no-files-found: warn
           retention-days: 7
+
+      - name: Upload timing evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: agent02-timing-evidence-${{ github.run_id }}
+          path: data/evidence/timing_evidence.jsonl
+          if-no-files-found: error
+          retention-days: 30
