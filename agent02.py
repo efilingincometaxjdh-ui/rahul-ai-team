@@ -46,6 +46,18 @@ def collect_market_data(provider=None):
     return market_data
 
 
+def latest_candle_timestamps(market_data):
+    """Return the latest normalized candle timestamp available per timeframe."""
+    latest = {}
+    for timeframe, candles in market_data.items():
+        if not candles:
+            continue
+        candidate = candles[-1].get("datetime")
+        if candidate:
+            latest[timeframe] = candidate
+    return latest
+
+
 def validate_market_data(market_data):
     available = [timeframe for timeframe, candles in market_data.items() if candles]
     missing = [timeframe for timeframe, candles in market_data.items() if not candles]
@@ -91,6 +103,7 @@ def build_market_state(market_data):
         "requested_timeframes": list(TIMEFRAMES.keys()),
         "available_timeframes": available,
         "missing_timeframes": missing,
+        "latest_candle_at": latest_candle_timestamps(market_data),
     }
     return market_state, status, errors, metadata
 
