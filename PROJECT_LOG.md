@@ -1,7 +1,7 @@
 # Rahul AI Team — Project Log
 
-Last audited: 2026-08-08
-Branch: `main`
+Last audited: 2026-08-14
+Branch: `agent/ctrader-market-data`
 Phase: **Phase 2 — evidence infrastructure**
 
 This file is the persistent source of truth for architecture, recovery evidence, current health, contracts, safety policy and next work.
@@ -34,7 +34,7 @@ Agent 05 remains the final deterministic permission authority and fails closed o
 
 PR #20 merged on 2026-08-01, integrating deterministic per-horizon evidence-coverage missing counts and EMPTY/PARTIAL/COMPLETE status while remaining read-only and fail-closed.
 
-PR #21 — historical XAUUSD ingestion — integrated into `main` at merge commit `66f84839c7d31a50a51ae51c29436675caf617db` after corrected exact-head CI passed (Tests run #206). The implementation reuses the existing Agent02 `IMarketDataProvider` / `TwelveDataProvider` transport rather than duplicating provider integration.
+PR #21 — historical XAUUSD ingestion — integrated into `main` at merge commit `66f84839c7d31a50a51ae51c29436675caf617db` after corrected exact-head CI passed (Tests run #206). The implementation reuses the existing Agent02 provider abstraction rather than duplicating provider integration.
 
 PR #21 adds canonical candle validation, append-only JSONL persistence, deterministic timestamp idempotency, fail-closed rejection of malformed/duplicate persisted history, and injected-provider tests. Empty provider results are a true no-op and do not create storage. It does not write current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
@@ -48,15 +48,11 @@ PR #23 — versioned deterministic feature extraction — integrated into `main`
 
 **2026-08-08 scheduler milestone:** Implemented a deterministic, transport-free 15-minute scheduling boundary in `history/scheduler.py` with UTC quarter-hour slot normalization, idempotent slot-due detection, minimum-horizon due checks for +15m/+1h/+4h, and next-slot calculation. Added deterministic tests covering timezone normalization, slot boundaries, due horizons, next-slot behavior and fail-closed rejection of naive timestamps. This work does not perform scheduling, networking, persistence, permission evaluation, alert generation or execution; it is the timing contract only.
 
-**2026-08-08 scheduler integration:** PR #25 merged into `main` at commit `411eafa472f414de571c5faf48d590aed50f28b4` after exact-head CI run #230 passed. The deterministic scheduler boundary is now integrated; no lateness tolerance or live scheduler/reference-feed behavior has been inferred from CI.
-
-**2026-08-08 timing-evidence audit:** The next Phase 2 task is currently blocked on representative live scheduler/reference-feed timing evidence. The Agent 02 scheduled workflow is configured for weekdays every 4 hours (`17 */4 * * 1-5`), not the Phase 2 15-minute observation cadence. More importantly, the latest scheduled Agent 02 run (#51, started 2026-08-07T20:58:42Z) failed during runtime collection because `TwelveDataProvider` reports that its network client is not implemented in the current shim. Therefore the repository currently has no trustworthy live timing samples from which to derive an outcome lateness tolerance. Synthetic timestamps remain test fixtures only and are not operational evidence.
-
-**2026-08-08 blocker:** Opened Issue #26 to record the missing runtime reference-collection path and required unblock. The preferred resolution is to complete the existing provider runtime without duplicating Twelve Data transport, or explicitly approve a separate zero-cost XAUUSD SPOT reference feed for timing evidence. No execution authority is required for the unblock.
+**2026-08-08 scheduler integration:** PR #25 merged into `main` at commit `411eafa472f414de571c5faf48d590aed50f28b4` after exact-head CI run #230 passed; no lateness tolerance or live scheduler/reference-feed behavior has been inferred from CI.
 
 **2026-08-10 cTrader migration:** PR #27 replaces the active Twelve Data runtime with Spotware's cTrader Open API and adds supplemental read-only Binance crypto telemetry. XAUUSD remains cTrader-broker sourced; Binance is not used as an XAUUSD substitute.
 
-**2026-08-10 cTrader auth hardening:** the provider now follows the official cTrader sequence of application auth → account discovery by access token → account auth → symbol discovery/trendbar requests. `CTRADER_ACCOUNT_ID` is optional; when omitted, the first account granted to the access token is selected, and when supplied it must be among the granted accounts. Required runtime secrets are `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, and `CTRADER_ACCESS_TOKEN`.
+**2026-08-14 cTrader scaling integrity fix:** Reviewed the cTrader trendbar normalization and found a hard-coded `100000` price divisor despite the provider already resolving the broker symbol's `digits`. Corrected normalization to derive the scale as `10 ** digits`, added deterministic tests for non-default precision and invalid digits, and kept the change strictly inside the market-data evidence boundary. This prevents silently corrupted XAUUSD prices when the broker symbol precision differs from the assumed scale.
 
 ## Contract snapshot
 
@@ -97,6 +93,14 @@ Historical market-data ingestion:
 - empty provider results are a true no-op and do not create empty history files;
 - ingestion is evidence-only and never writes current Agent02 state, Agent04 decisions, Agent05 permission or Agent06 alerts.
 
+cTrader provider contract:
+- XAUUSD is broker-sourced through cTrader Open API only;
+- required runtime secrets are `CTRADER_CLIENT_ID`, `CTRADER_CLIENT_SECRET`, and `CTRADER_ACCESS_TOKEN`; account ID is optional and must be granted to the token when supplied;
+- broker symbol identity is discovered dynamically and normalized case-insensitively;
+- trendbar prices are scaled from the resolved symbol `digits` value, never from a hard-coded divisor;
+- deterministic tests remain network-free;
+- runtime collection remains market-data-only and cannot grant Agent04/05/06 authority.
+
 Replay contract:
 - validates the entire persisted candle file before any callback is invoked;
 - requires unique, strictly increasing normalized timestamps;
@@ -121,13 +125,13 @@ Observation/outcome scheduler boundary:
 ## CI / test evidence
 
 - `.github/workflows/tests.yml` runs `python -m unittest discover -s tests -v` on push and pull request using Python 3.11.
-- Deterministic V1 and all previously merged Phase 2 milestones through PR #21 have recorded clean CI evidence in the prior project history.
-- PR #21 final exact-head CI run #206: **SUCCESS** and PR #21 merged after clean CI, mergeability and zero unresolved review threads.
-- PR #22 exact-head CI run #213: **SUCCESS** with deterministic replay tests covering chronological replay, malformed-history preflight rejection, out-of-order rejection, empty replay and callback validation.
-- PR #22 merged only after clean exact-head CI, mergeability and zero unresolved review threads.
-- PR #23 exact-head CI run #221: **SUCCESS** and PR #23 merged after clean exact-head CI, mergeability and zero unresolved review threads.
-- PR #25 exact-head CI run #230: **SUCCESS** and PR #25 merged after clean exact-head CI, mergeability and zero unresolved review threads.
-- PR #27 deterministic CI previously passed before the cTrader auth-flow hardening; fresh exact-head CI is required after the latest changes.
+- Deterministic V1 and previously merged Phase 2 milestones through PR #25 have recorded clean CI evidence.
+- PR #21 final exact-head CI run #206: **SUCCESS**.
+- PR #22 exact-head CI run #213: **SUCCESS**.
+- PR #23 exact-head CI run #221: **SUCCESS**.
+- PR #25 exact-head CI run #230: **SUCCESS**.
+- PR #27 pre-hardening exact-head CI passed, but the branch has changed since then; fresh exact-head CI is required after the scaling fix.
+- Current PR #27 head `ba296471a82b92a732935f8ee09e01fb8106937c` has no completed workflow result yet.
 
 ## Remaining risks / technical debt
 
@@ -141,13 +145,15 @@ Observation/outcome scheduler boundary:
 8. Observation/outcome collection cadence is now defined as 15 minutes; the deterministic timing boundary is implemented, while real scheduler/reference-feed lateness measurement remains unfinished.
 9. Coverage analytics currently reports evidence completeness only; directional/performance statistics require a trustworthy observation-time reference-price contract exercised against representative evidence.
 10. Representative timing evidence remains unfinished until the cTrader runtime produces real timestamped observations.
+11. PR #27 is currently non-mergeable and requires fresh exact-head CI plus credentialed demo runtime validation before integration.
 
 ## Active Phase 2 loop
 
 1. **Cadence decision complete:** observations are intended to be collected every 15 minutes; this is sufficient to service the existing +15m, +1h and +4h outcome horizons. No lateness tolerance is assumed.
 2. **Scheduler boundary complete:** deterministic 15-minute observation/outcome timing helpers are integrated and covered by exact-head CI run #230.
-3. **Current workstream:** PR #27 cTrader market-data migration and authentication hardening.
-4. **Next gate:** fresh exact-head CI, then credentialed demo Agent 02 runtime producing real M5/M15/H1/H4 XAUUSD observation artifacts.
-5. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
-6. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
-7. Harden historical indexing only when evidence volume justifies it.
+3. **Provider decision approved:** cTrader is now the intended primary XAUUSD market-data source; PR #27 remains subject to technical validation and mergeability.
+4. **Current gate:** fresh exact-head CI for PR #27 after the scaling-integrity fix, followed by resolving the branch's mergeability state.
+5. **Runtime gate:** configure cTrader demo credentials, run Agent 02, verify M5/M15/H1/H4 XAUUSD artifacts and repeated timestamped observations.
+6. After representative timing evidence exists, derive and enforce outcome lateness tolerance.
+7. Extend analytics with directional/performance statistics only after the observation-time reference-price contract is exercised against representative evidence; analytics failures must never increase authority.
+8. Harden historical indexing only when evidence volume justifies it.
