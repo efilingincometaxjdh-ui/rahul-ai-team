@@ -1,6 +1,7 @@
 import os
 import unittest
 from datetime import datetime, timezone, timedelta
+from types import SimpleNamespace
 
 from market.provider import CTraderOpenAPIProvider, IMarketDataProvider
 from agent02 import collect_market_data, build_market_state
@@ -90,6 +91,25 @@ class ProviderIntegrationTests(unittest.TestCase):
             CTraderOpenAPIProvider._normalise_symbol("xauusd"),
             "XAUUSD",
         )
+
+    def test_ctrader_bar_scaling_uses_symbol_digits(self):
+        bar = SimpleNamespace(
+            low=235000,
+            deltaOpen=100,
+            deltaHigh=250,
+            deltaClose=150,
+            utcTimestampInMinutes=1,
+        )
+        candle = CTraderOpenAPIProvider._bar_to_candle(bar, digits=2)
+        self.assertEqual(candle["low"], 2350.0)
+        self.assertEqual(candle["open"], 2351.0)
+        self.assertEqual(candle["high"], 2352.5)
+        self.assertEqual(candle["close"], 2351.5)
+
+    def test_ctrader_bar_scaling_rejects_invalid_digits(self):
+        bar = SimpleNamespace(low=235000, deltaOpen=0, deltaHigh=0, deltaClose=0, utcTimestampInMinutes=1)
+        with self.assertRaises(ValueError):
+            CTraderOpenAPIProvider._bar_to_candle(bar, digits=-1)
 
 
 if __name__ == "__main__":
