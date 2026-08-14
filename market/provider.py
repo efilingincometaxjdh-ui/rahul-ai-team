@@ -76,10 +76,13 @@ class CTraderOpenAPIProvider(IMarketDataProvider):
 
     @staticmethod
     def _bar_to_candle(bar, digits: int) -> Dict:
-        low = float(bar.low) / 100000.0
-        open_price = (float(bar.low) + float(getattr(bar, "deltaOpen", 0))) / 100000.0
-        close_price = (float(bar.low) + float(getattr(bar, "deltaClose", 0))) / 100000.0
-        high_price = (float(bar.low) + float(getattr(bar, "deltaHigh", 0))) / 100000.0
+        if not isinstance(digits, int) or digits < 0:
+            raise ValueError("cTrader symbol digits must be a non-negative integer")
+        scale = 10 ** digits
+        low = float(bar.low) / scale
+        open_price = (float(bar.low) + float(getattr(bar, "deltaOpen", 0))) / scale
+        close_price = (float(bar.low) + float(getattr(bar, "deltaClose", 0))) / scale
+        high_price = (float(bar.low) + float(getattr(bar, "deltaHigh", 0))) / scale
         timestamp = datetime.fromtimestamp(
             int(bar.utcTimestampInMinutes) * 60,
             tz=timezone.utc,
